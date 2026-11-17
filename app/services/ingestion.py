@@ -45,6 +45,8 @@ class IngestionService:
             raise RobotsDeniedError("robots.txt disallows this URL")
 
         fetched = await self.fetcher.fetch(normalized)
+        if fetched.content_type not in {"text/html", "application/xhtml+xml"}:
+            raise ValueError("Only HTML pages can be ingested")
         document = extract_html(fetched.body, fetched.final_url)
         saved = await self.repository.save_extracted_document(
             document,
