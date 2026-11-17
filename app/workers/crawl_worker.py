@@ -8,26 +8,21 @@ import socket
 import uuid
 from contextlib import suppress
 from time import monotonic
+from urllib.parse import urlsplit
 
 from prometheus_client import start_http_server
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.crawler.fetcher import SafeHTTPFetcher
 from app.crawler.url_policy import URLPolicy
-from app.database.queue import CrawlJobRepository
 from app.database.domains import CrawlDomainRepository
+from app.database.queue import CrawlJobRepository
 from app.database.repository import PageRepository
 from app.services.ingestion import IngestionService
 from app.workers.logging_config import JsonLogFormatter
 from app.workers.metrics import (
-    ACTIVE_WORKERS,
-    JOBS_CLAIMED,
-    JOBS_COMPLETED,
-    JOBS_FAILED,
-    JOB_DURATION,
-    LEASE_LOST,
-    PENDING_JOBS,
-    RUNNING_JOBS,
+    ACTIVE_WORKERS, JOBS_CLAIMED, JOBS_COMPLETED, JOBS_FAILED,
+    JOB_DURATION, LEASE_LOST, PENDING_JOBS, RUNNING_JOBS,
 )
 
 logger = logging.getLogger("search.crawl_worker")
@@ -35,7 +30,9 @@ logger = logging.getLogger("search.crawl_worker")
 
 async def _heartbeat(
     jobs: CrawlJobRepository,
+    domains: CrawlDomainRepository,
     job_id: uuid.UUID,
+    domain: str,
     owner_token: str,
     lease_seconds: int,
     lost_lease: asyncio.Event,
@@ -44,20 +41,15 @@ async def _heartbeat(
     while True:
         await asyncio.sleep(interval)
         try:
-            renewed = await jobs.renew_lease(job_id, owner_token, lease_seconds)
+            job_ok = await jobs.renew_lease(job_id, owner_token, lease_seconds)
+            domain_ok = await domains.renew(domain, owner_token, max(300, lease_seconds))
         except Exception:
-            logger.exception(
-                "Lease heartbeat failed",
-                extra={"event": "heartbeat_error", "job_id": str(job_id)},
-            )
+            logger.exception("Lease heartbeat failed", extra={"event": "heartbeat_error", "job_id": str(job_id)})
             lost_lease.set()
             return
-        if not renewed:
+        if not job_ok or not domain_ok:
             lost_lease.set()
-            logger.warning(
-                "Job lease could not be renewed",
-                extra={"event": "lease_lost", "job_id": str(job_id)},
-            )
+            logger.warning("Job or domain lease was lost", extra={"event": "lease_lost", "job_id": str(job_id)})
             return
 
 
@@ -65,6 +57,7 @@ async def _worker_slot(
     slot_number: int,
     worker_id: str,
     jobs: CrawlJobRepository,
+    domains: CrawlDomainRepository,
     ingestion: IngestionService,
     shutdown: asyncio.Event,
     lease_seconds: int,
@@ -78,6 +71,7 @@ async def _worker_slot(
             RUNNING_JOBS.set(counts["running"])
         except Exception:
             logger.exception("Unable to refresh queue metrics", extra={"event": "metrics_error"})
+
         owner_token = f"{worker_id}:{slot_number}:{uuid.uuid4().hex}"
         try:
             job = await jobs.claim(owner_token, lease_seconds=lease_seconds)
@@ -93,36 +87,35 @@ async def _worker_slot(
                 pass
             continue
 
+        domain = (urlsplit(job.url).hostname or "").lower()
+        try:
+            acquired = await domains.try_acquire(domain, owner_token, max(300, lease_seconds))
+        except Exception:
+            logger.exception("Unable to acquire domain lease", extra={"event": "domain_lease_error"})
+            await jobs.fail(job.id, owner_token, "Domain lease acquisition failed")
+            continue
+        if not acquired:
+            await jobs.defer(job.id, owner_token, delay_seconds=2.0)
+            continue
+
         JOBS_CLAIMED.inc()
         ACTIVE_WORKERS.inc()
         started = monotonic()
         lost_lease = asyncio.Event()
         heartbeat_task = asyncio.create_task(
-            _heartbeat(jobs, job.id, owner_token, lease_seconds, lost_lease)
+            _heartbeat(jobs, domains, job.id, domain, owner_token, lease_seconds, lost_lease)
         )
         logger.info(
             "Crawl job started",
-            extra={
-                "event": "job_started",
-                "worker_id": worker_id,
-                "job_id": str(job.id),
-                "attempt": job.attempts,
-            },
+            extra={"event": "job_started", "worker_id": worker_id, "job_id": str(job.id), "attempt": job.attempts},
         )
         try:
-            from urllib.parse import urlsplit
-            domain = urlsplit(job.url).hostname or ""
-            # Serialize same-domain work inside this process. The fetcher's
-            # host rate limiter remains an additional request-level control.
             async with domain_locks.setdefault(domain, asyncio.Lock()):
                 saved, _ = await ingestion.crawl_one(job.url)
 
             if lost_lease.is_set():
                 LEASE_LOST.inc()
-                logger.warning(
-                    "Skipping completion because this worker lost the lease",
-                    extra={"event": "completion_skipped", "job_id": str(job.id)},
-                )
+                logger.warning("Skipping completion because lease was lost", extra={"event": "completion_skipped", "job_id": str(job.id)})
                 continue
 
             completed = await jobs.complete(job.id, owner_token, saved.page_id)
@@ -130,53 +123,35 @@ async def _worker_slot(
                 JOBS_COMPLETED.inc()
                 logger.info(
                     "Crawl job completed",
-                    extra={
-                        "event": "job_completed",
-                        "worker_id": worker_id,
-                        "job_id": str(job.id),
-                        "duration_seconds": round(monotonic() - started, 3),
-                    },
+                    extra={"event": "job_completed", "worker_id": worker_id, "job_id": str(job.id),
+                           "duration_seconds": round(monotonic() - started, 3)},
                 )
             else:
                 LEASE_LOST.inc()
-                logger.warning(
-                    "Job lease was no longer owned at completion",
-                    extra={"event": "completion_rejected", "job_id": str(job.id)},
-                )
+                logger.warning("Job lease was no longer owned at completion", extra={"event": "completion_rejected", "job_id": str(job.id)})
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             JOBS_FAILED.inc()
-            logger.exception(
-                "Crawl job failed",
-                extra={
-                    "event": "job_failed",
-                    "worker_id": worker_id,
-                    "job_id": str(job.id),
-                    "attempt": job.attempts,
-                },
-            )
+            logger.exception("Crawl job failed", extra={"event": "job_failed", "worker_id": worker_id,
+                            "job_id": str(job.id), "attempt": job.attempts})
             if not lost_lease.is_set():
-                await jobs.fail(
-                    job.id, owner_token, f"{type(exc).__name__}: {exc}"
-                )
+                await jobs.fail(job.id, owner_token, f"{type(exc).__name__}: {exc}")
         finally:
             heartbeat_task.cancel()
             with suppress(asyncio.CancelledError):
                 await heartbeat_task
+            await domains.release(domain, owner_token, minimum_interval_seconds=1.0)
             JOB_DURATION.observe(monotonic() - started)
-            ACTIVE_WORKERS.dec()\n            await domains.release(domain, owner_token, minimum_interval_seconds=1.0)
+            ACTIVE_WORKERS.dec()
 
 
 async def run_worker() -> None:
-    database_url = os.getenv(
-        "DATABASE_URL",
-        "postgresql+asyncpg://search:search@localhost:5432/search_engine",
-    )
-    domains = frozenset(
+    database_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://search:search@localhost:5432/search_engine")
+    allowed_domains = frozenset(
         item.strip() for item in os.getenv("ALLOWED_DOMAINS", "").split(",") if item.strip()
     )
-    if not domains:
+    if not allowed_domains:
         raise RuntimeError("ALLOWED_DOMAINS must contain at least one permitted domain")
 
     concurrency = int(os.getenv("WORKER_CONCURRENCY", "2"))
@@ -188,10 +163,11 @@ async def run_worker() -> None:
 
     engine = create_async_engine(database_url, pool_pre_ping=True)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
-    policy = URLPolicy(allowed_domains=domains)
+    policy = URLPolicy(allowed_domains=allowed_domains)
     fetcher = SafeHTTPFetcher(policy)
     pages = PageRepository(sessions)
     jobs = CrawlJobRepository(sessions)
+    domain_repository = CrawlDomainRepository(sessions)
     ingestion = IngestionService(policy, fetcher, pages)
     worker_id = os.getenv("WORKER_ID", f"{socket.gethostname()}-{uuid.uuid4()}")
     shutdown = asyncio.Event()
@@ -204,34 +180,16 @@ async def run_worker() -> None:
             with suppress(NotImplementedError):
                 loop.add_signal_handler(sig, shutdown.set)
 
-        logger.info(
-            "Worker process started",
-            extra={
-                "event": "worker_started",
-                "worker_id": worker_id,
-                "concurrency": concurrency,
-            },
-        )
+        logger.info("Worker process started", extra={"event": "worker_started", "worker_id": worker_id, "concurrency": concurrency})
         slots = [
             asyncio.create_task(
-                _worker_slot(
-                    slot,
-                    worker_id,
-                    jobs,
-                    ingestion,
-                    shutdown,
-                    lease_seconds,
-                    poll_seconds,
-                    domain_locks,
-                )
+                _worker_slot(slot, worker_id, jobs, domain_repository, ingestion,
+                             shutdown, lease_seconds, poll_seconds, domain_locks)
             )
             for slot in range(concurrency)
         ]
         await shutdown.wait()
-        logger.info(
-            "Worker shutdown requested",
-            extra={"event": "shutdown_requested", "worker_id": worker_id},
-        )
+        logger.info("Worker shutdown requested", extra={"event": "shutdown_requested", "worker_id": worker_id})
         await asyncio.gather(*slots)
     finally:
         await engine.dispose()
@@ -240,9 +198,5 @@ async def run_worker() -> None:
 if __name__ == "__main__":
     handler = logging.StreamHandler()
     handler.setFormatter(JsonLogFormatter())
-    logging.basicConfig(
-        level=os.getenv("LOG_LEVEL", "INFO"),
-        handlers=[handler],
-        force=True,
-    )
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), handlers=[handler], force=True)
     asyncio.run(run_worker())
