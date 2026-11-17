@@ -27,7 +27,7 @@ def upgrade() -> None:
             name="uq_page_chunk_version_index_model",
         ),
     )
-    # Replace the generic ARRAY column with pgvector's fixed 768-dimensional type.
+    # Convert the initially nullable placeholder column to pgvector's fixed 768-dimensional type.
     op.execute("ALTER TABLE page_chunks ALTER COLUMN embedding TYPE vector(768) USING NULL::vector(768)")
     op.create_index("ix_page_chunks_version_id", "page_chunks", ["page_version_id"])
     op.execute("""
