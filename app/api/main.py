@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.api.schemas import (
     CrawlRequest,
     CrawlResponse,
+    CrawlJobRequest,
+    CrawlJobAccepted,
+    CrawlJobStatus,
     DocumentDetail,
     DocumentSummary,
     HealthResponse,
@@ -20,6 +23,8 @@ from app.api.schemas import (
 from app.crawler.fetcher import FetchError, SafeHTTPFetcher
 from app.crawler.url_policy import URLPolicy, URLRejected
 from app.database.models import Page
+from app.database.jobs import CrawlJob
+from app.database.queue import CrawlJobRepository
 from app.database.repository import PageRepository
 from app.search.postgres_search import PostgresSearchRepository
 from app.services.ingestion import IngestionService, RobotsDeniedError
@@ -46,6 +51,8 @@ def create_app() -> FastAPI:
         app.state.engine = engine
         app.state.sessions = sessions
         app.state.page_repository = PageRepository(sessions)
+        app.state.crawl_job_repository = CrawlJobRepository(sessions)
+        app.state.url_policy = policy
         app.state.search_repository = PostgresSearchRepository(sessions)
         app.state.ingestion_service = (
             IngestionService(policy, fetcher, app.state.page_repository)
@@ -105,6 +112,55 @@ def create_app() -> FastAPI:
             page_created=saved.page_created,
             content_changed=saved.content_changed,
             final_url=final_url,
+        )
+
+
+    @app.post("/crawl-jobs", response_model=CrawlJobAccepted, status_code=202)
+    async def enqueue_crawl(request: Request, payload: CrawlJobRequest):
+        policy = getattr(request.app.state, "url_policy", None)
+        repository = getattr(request.app.state, "crawl_job_repository", None)
+        if policy is None or repository is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Crawling is disabled; configure ALLOWED_DOMAINS first",
+            )
+        try:
+            normalized_url = policy.normalize(str(payload.url))
+        except URLRejected as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            job = await repository.enqueue(normalized_url, payload.max_attempts)
+        except Exception as exc:
+            # A concurrent duplicate may win the partial unique-index race.
+            from sqlalchemy.exc import IntegrityError
+            if not isinstance(exc, IntegrityError):
+                raise
+            job = await repository.get_active_by_url(normalized_url)
+            if job is None:
+                raise
+        return CrawlJobAccepted(job_id=job.id, status=job.status)
+
+    @app.get("/crawl-jobs/{job_id}", response_model=CrawlJobStatus)
+    async def get_crawl_job(request: Request, job_id: str):
+        from uuid import UUID
+        try:
+            parsed_id = UUID(job_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid job ID") from exc
+        repository = request.app.state.crawl_job_repository
+        job = await repository.get(parsed_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Crawl job not found")
+        return CrawlJobStatus(
+            job_id=job.id,
+            url=job.url,
+            status=job.status,
+            attempts=job.attempts,
+            max_attempts=job.max_attempts,
+            last_error=job.last_error,
+            result_page_id=job.result_page_id,
+            created_at=job.created_at,
+            completed_at=job.completed_at,
         )
 
     @app.get("/search", response_model=SearchResponse)
