@@ -31,7 +31,9 @@ This project is not intended to reproduce Google's global index. The initial sea
 12. [Distributed crawling and politeness](docs/11-distributed-crawling-and-politeness.md)
 13. [Sitemap discovery and bounded crawl runs](docs/12-production-sitemap-discovery-and-crawl-runs.md)
 14. Semantic and hybrid search
-15. LangChain and MCP integration
+15. Ranking and reranking
+16. Search quality evaluation
+17. LangChain and MCP integration
 
 ## Planned technology
 
@@ -44,8 +46,6 @@ This project is not intended to reproduce Google's global index. The initial sea
 - LangChain and MCP for agent integration
 - pytest and Docker Compose
 
-Exact dependency versions will be pinned as implementation begins.
-
 ## Module 13 — Semantic search
 
 See [Semantic search with Ollama and pgvector](docs/13-semantic-search-with-ollama-and-pgvector.md).
@@ -57,6 +57,12 @@ The API provides `POST /documents/{document_id}/index` to embed a document's cur
 See [Hybrid Search and Reciprocal Rank Fusion](docs/14-hybrid-search-and-reciprocal-rank-fusion.md).
 
 The `GET /search/hybrid` endpoint fuses lexical and semantic candidate rankings using RRF. Configure `HYBRID_RRF_K` (default 60) and `HYBRID_CANDIDATE_LIMIT` (default 50).
+
+## Module 15 — Ranking and reranking
+
+See [Search Ranking and Reranking](docs/15-search-ranking-and-reranking.md).
+
+The `GET /search/reranked` endpoint retrieves hybrid candidates and reorders them using normalized RRF, title-term coverage, snippet-term coverage, and exact title phrase matching. Configure `RERANK_CANDIDATE_LIMIT` (defaults to `HYBRID_CANDIDATE_LIMIT`, which defaults to 50). The baseline is deterministic and has no additional model dependency.
 
 ## Important crawler safeguards
 
@@ -73,5 +79,8 @@ The crawler must identify itself, respect robots.txt and site terms, apply per-h
 - Worker lease heartbeat, configurable concurrency, graceful shutdown, JSON logs, and Prometheus metrics.
 - PostgreSQL-backed domain leases for cross-process crawl coordination.
 - Bounded sitemap-index traversal, same-host HTML link discovery, and PostgreSQL-backed crawl runs with atomic page/depth budgets.
+- Semantic retrieval using Ollama embeddings and pgvector.
+- Hybrid lexical/semantic retrieval using Reciprocal Rank Fusion.
+- Two-stage ranking with a lightweight reranking baseline.
 
 The project is under active development. Run the test suite and apply migrations against PostgreSQL before relying on the implementation in production.
