@@ -29,8 +29,9 @@ This project is not intended to reproduce Google's global index. The initial sea
 10. [Durable crawl queue and workers](docs/09-durable-crawl-queue-and-workers.md)
 11. [Worker reliability and observability](docs/10-worker-reliability-and-observability.md)
 12. [Distributed crawling and politeness](docs/11-distributed-crawling-and-politeness.md)
-13. Semantic and hybrid search
-14. LangChain and MCP integration
+13. [Sitemap discovery and bounded crawl runs](docs/12-production-sitemap-discovery-and-crawl-runs.md)
+14. Semantic and hybrid search
+15. LangChain and MCP integration
 
 ## Planned technology
 
@@ -58,6 +59,7 @@ The crawler must identify itself, respect robots.txt and site terms, apply per-h
 - FastAPI endpoints for health, controlled crawling, search, document metadata, and durable crawl-job submission/status.
 - PostgreSQL-backed crawl queue with worker leases, retry backoff, and independent worker process.
 - Worker lease heartbeat, configurable concurrency, graceful shutdown, JSON logs, and Prometheus metrics.
-- PostgreSQL-backed domain leases for cross-process crawl coordination, robots cache storage schema, and a bounded sitemap XML parser.
+- PostgreSQL-backed domain leases for cross-process crawl coordination.
+- Bounded sitemap-index traversal, same-host HTML link discovery, and PostgreSQL-backed crawl runs with atomic page/depth budgets.
 
 The project is under active development. Run the test suite and apply migrations against PostgreSQL before relying on the implementation in production.
