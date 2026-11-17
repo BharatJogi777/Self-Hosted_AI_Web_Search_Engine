@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from sqlalchemy import select
@@ -23,7 +22,6 @@ from app.api.schemas import (
 from app.crawler.fetcher import FetchError, SafeHTTPFetcher
 from app.crawler.url_policy import URLPolicy, URLRejected
 from app.database.models import Page
-from app.database.jobs import CrawlJob
 from app.database.queue import CrawlJobRepository
 from app.database.repository import PageRepository
 from app.search.postgres_search import PostgresSearchRepository
@@ -213,7 +211,6 @@ def create_app() -> FastAPI:
     @app.get("/documents/{document_id}", response_model=DocumentDetail)
     async def get_document(request: Request, document_id: str):
         from uuid import UUID
-        from uuid import UUID as UUIDType
         try:
             parsed_id = UUID(document_id)
         except ValueError as exc:
