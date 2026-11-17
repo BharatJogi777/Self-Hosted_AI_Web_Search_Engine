@@ -140,7 +140,7 @@ class CrawlJobRepository:
                 updated_at = :now
             FROM candidate
             WHERE job.id = candidate.id
-            RETURNING job.id, job.url, job.attempts, job.max_attempts, job.run_id, job.depth, job.run_id, job.depth
+            RETURNING job.id, job.url, job.attempts, job.max_attempts, job.run_id, job.depth
         """)
         now = datetime.now(timezone.utc)
         async with self.sessions() as session:
