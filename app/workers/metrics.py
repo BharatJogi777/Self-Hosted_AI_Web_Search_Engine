@@ -11,3 +11,6 @@ JOB_DURATION = Histogram(
     "Time spent processing a crawl job",
     buckets=(1, 5, 10, 30, 60, 120, 300, 600),
 )
+
+PENDING_JOBS = Gauge("search_crawl_pending_jobs", "Jobs currently pending")
+RUNNING_JOBS = Gauge("search_crawl_running_jobs", "Jobs currently running")
