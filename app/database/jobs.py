@@ -10,7 +10,8 @@ from app.database.base import Base
 
 
 class CrawlJob(Base):
-    __tablename__ = "crawl_jobs"\n    __table_args__ = (UniqueConstraint("run_id", "url", name="uq_crawl_jobs_run_url"),)
+    __tablename__ = "crawl_jobs"
+    __table_args__ = (UniqueConstraint("run_id", "url", name="uq_crawl_jobs_run_url"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
