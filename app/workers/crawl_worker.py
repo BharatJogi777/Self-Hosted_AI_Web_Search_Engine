@@ -113,12 +113,17 @@ async def _worker_slot(
         )
         try:
             async with domain_locks.setdefault(domain, asyncio.Lock()):
-                saved, _ = await ingestion.crawl_one(job.url)
-                if job.run_id is not None and job.depth == 0:
-                    discovered_urls = await sitemap_discovery.discover(job.url)
+                saved, _, page_links = await ingestion.crawl_one_with_links(job.url)
+                if job.run_id is not None:
+                    discovered_urls = set(page_links)
+                    if job.depth == 0:
+                        discovered_urls.update(await sitemap_discovery.discover(job.url))
                     for discovered_url in discovered_urls:
                         await jobs.enqueue_run_url(
-                            job.run_id, discovered_url, depth=1, parent_url=job.url
+                            job.run_id,
+                            discovered_url,
+                            depth=job.depth + 1,
+                            parent_url=job.url,
                         )
 
             if lost_lease.is_set():
