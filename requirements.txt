@@ -1,3 +1,6 @@
 aiohttp>=3.10,<4
+beautifulsoup4>=4.12,<5
+lxml>=5,<7
+trafilatura>=2,<3
 pytest>=8,<9
 pytest-asyncio>=0.24,<2
