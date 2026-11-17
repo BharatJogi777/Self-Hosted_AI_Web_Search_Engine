@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -28,6 +28,7 @@ from app.api.schemas import (
     HybridSearchResponse,
     RerankedSearchItem,
     RerankedSearchResponse,
+    QuerySuggestionResponse,
 )
 from app.crawler.fetcher import FetchError, SafeHTTPFetcher
 from app.crawler.url_policy import URLPolicy, URLRejected
@@ -41,6 +42,9 @@ from app.search.hybrid_search import HybridSearchRepository
 from app.search.ranking import RerankedSearchRepository, TermCoverageReranker
 from app.search.query_understanding import default_query_processor
 from app.services.ingestion import IngestionService, RobotsDeniedError
+from app.api.security import configured_api_keys, require_api_key
+from app.api.rate_limit import FixedWindowRateLimiter
+from app.api.cache import cache_key
 
 
 def configured_domains() -> frozenset[str]:
@@ -62,6 +66,18 @@ def create_app() -> FastAPI:
         fetcher = SafeHTTPFetcher(policy) if policy else None
 
         app.state.engine = engine
+        app.state.api_keys = configured_api_keys()
+        app.state.rate_limiter = FixedWindowRateLimiter(
+            limit=int(os.getenv("SEARCH_RATE_LIMIT", "60")),
+            window_seconds=int(os.getenv("SEARCH_RATE_WINDOW_SECONDS", "60")),
+        )
+        redis_client = None
+        redis_url = os.getenv("REDIS_URL")
+        if redis_url:
+            from redis.asyncio import Redis
+            redis_client = Redis.from_url(redis_url, decode_responses=False)
+            await redis_client.ping()
+        app.state.redis = redis_client
         app.state.sessions = sessions
         app.state.page_repository = PageRepository(sessions)
         app.state.crawl_job_repository = CrawlJobRepository(sessions)
@@ -104,6 +120,8 @@ def create_app() -> FastAPI:
         try:
             yield
         finally:
+            if redis_client is not None:
+                await redis_client.aclose()
             await embedding_client.close()
             await engine.dispose()
 
@@ -113,6 +131,45 @@ def create_app() -> FastAPI:
         description="Scoped crawling and lexical search over permitted websites.",
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def protect_search_traffic(request: Request, call_next):
+        if request.method == "GET" and request.url.path.startswith("/search"):
+            peer = request.client.host if request.client else "unknown"
+            limiter = request.app.state.rate_limiter
+            decision = await limiter.check(peer, request.app.state.redis)
+            if not decision.allowed:
+                return Response(
+                    content='{"detail":"Rate limit exceeded"}',
+                    status_code=429,
+                    media_type="application/json",
+                    headers={"Retry-After": str(decision.retry_after)},
+                )
+
+            redis_client = request.app.state.redis
+            key = cache_key(request.url.path, request.url.query.encode("utf-8"))
+            if redis_client is not None:
+                cached = await redis_client.get(key)
+                if cached is not None:
+                    return Response(
+                        content=cached,
+                        status_code=200,
+                        media_type="application/json",
+                        headers={"X-Cache": "HIT"},
+                    )
+            response = await call_next(request)
+            if redis_client is not None and response.status_code == 200:
+                body = b"".join([chunk async for chunk in response.body_iterator])
+                await redis_client.setex(key, int(os.getenv("SEARCH_CACHE_TTL_SECONDS", "30")), body)
+                return Response(
+                    content=body,
+                    status_code=response.status_code,
+                    headers={k: v for k, v in response.headers.items() if k.lower() not in {"content-length", "content-type"}},
+                    media_type="application/json",
+                    background=response.background,
+                )
+            return response
+        return await call_next(request)
 
     @app.get("/health/live", response_model=HealthResponse)
     async def health_live():
@@ -131,7 +188,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail="Database is unavailable") from exc
         return HealthResponse(status="ready")
 
-    @app.post("/crawl", response_model=CrawlResponse)
+    @app.post("/crawl", response_model=CrawlResponse, dependencies=[Depends(require_api_key)])
     async def crawl(request: Request, payload: CrawlRequest):
         service = getattr(request.app.state, "ingestion_service", None)
         if service is None:
@@ -158,7 +215,7 @@ def create_app() -> FastAPI:
             final_url=final_url,
         )
 
-    @app.post("/crawl-jobs", response_model=CrawlJobAccepted, status_code=202)
+    @app.post("/crawl-jobs", response_model=CrawlJobAccepted, status_code=202, dependencies=[Depends(require_api_key)])
     async def enqueue_crawl(request: Request, payload: CrawlJobRequest):
         policy = getattr(request.app.state, "url_policy", None)
         repository = getattr(request.app.state, "crawl_job_repository", None)
@@ -182,7 +239,7 @@ def create_app() -> FastAPI:
                 raise
         return CrawlJobAccepted(job_id=job.id, status=job.status)
 
-    @app.post("/crawl-runs", response_model=CrawlRunAccepted, status_code=202)
+    @app.post("/crawl-runs", response_model=CrawlRunAccepted, status_code=202, dependencies=[Depends(require_api_key)])
     async def create_crawl_run(request: Request, payload: CrawlRunRequest):
         policy = getattr(request.app.state, "url_policy", None)
         repository = getattr(request.app.state, "crawl_job_repository", None)
@@ -208,7 +265,7 @@ def create_app() -> FastAPI:
             max_pages=run.max_pages, max_depth=run.max_depth,
         )
 
-    @app.get("/crawl-runs/{run_id}", response_model=CrawlRunStatus)
+    @app.get("/crawl-runs/{run_id}", response_model=CrawlRunStatus, dependencies=[Depends(require_api_key)])
     async def get_crawl_run(request: Request, run_id: str):
         from uuid import UUID
         try:
@@ -226,7 +283,7 @@ def create_app() -> FastAPI:
             discovered_count=run.discovered_count, job_counts=counts,
         )
 
-    @app.get("/crawl-jobs/{job_id}", response_model=CrawlJobStatus)
+    @app.get("/crawl-jobs/{job_id}", response_model=CrawlJobStatus, dependencies=[Depends(require_api_key)])
     async def get_crawl_job(request: Request, job_id: str):
         from uuid import UUID
         try:
@@ -269,7 +326,7 @@ def create_app() -> FastAPI:
             results=[SearchItem(**item.__dict__) for item in results],
         )
 
-    @app.post("/documents/{document_id}/index", response_model=SemanticIndexResponse)
+    @app.post("/documents/{document_id}/index", response_model=SemanticIndexResponse, dependencies=[Depends(require_api_key)])
     async def index_document(request: Request, document_id: str):
         from uuid import UUID
         try:
