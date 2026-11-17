@@ -13,7 +13,10 @@ class CrawlJob(Base):
     __tablename__ = "crawl_jobs"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    url: Mapped[str] = mapped_column(String(2048), nullable=False)\n    run_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("crawl_runs.id", ondelete="CASCADE"), nullable=True, index=True)\n    depth: Mapped[int] = mapped_column(Integer, nullable=False, default=0)\n    parent_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("crawl_runs.id", ondelete="CASCADE"), nullable=True, index=True)
+    depth: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    parent_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
