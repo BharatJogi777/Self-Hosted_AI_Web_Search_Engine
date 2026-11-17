@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.database.jobs import CrawlJob\nfrom app.database.runs import CrawlRun
+from app.database.jobs import CrawlJob
+from app.database.runs import CrawlRun
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,8 @@ class ClaimedJob:
     url: str
     attempts: int
     max_attempts: int
+    run_id: uuid.UUID | None = None
+    depth: int = 0
 
 
 class CrawlJobRepository:
@@ -137,7 +140,7 @@ class CrawlJobRepository:
                 updated_at = :now
             FROM candidate
             WHERE job.id = candidate.id
-            RETURNING job.id, job.url, job.attempts, job.max_attempts, job.run_id, job.depth
+            RETURNING job.id, job.url, job.attempts, job.max_attempts, job.run_id, job.depth, job.run_id, job.depth
         """)
         now = datetime.now(timezone.utc)
         async with self.sessions() as session:
