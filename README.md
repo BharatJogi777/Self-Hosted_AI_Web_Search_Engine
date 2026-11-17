@@ -98,9 +98,14 @@ The crawler must identify itself, respect robots.txt and site terms, apply per-h
 - Hybrid lexical/semantic retrieval using Reciprocal Rank Fusion.
 - Two-stage ranking with a lightweight reranking baseline.
 - API-key protection for crawl/index operations, search rate limiting, and optional Redis-backed search response caching.
+- Docker Compose deployment with PostgreSQL/pgvector, Redis, migration job, API, crawl worker, optional Prometheus, and an asynchronous search load-test utility.
 
 The project is under active development. Run the test suite and apply migrations against PostgreSQL before relying on the implementation in production.
 
 ## Module 18 — API security and traffic controls
 
 See [Production API Security, Caching, and Rate Limiting](docs/18-production-api-security-caching-rate-limiting.md). Administrative crawl and indexing routes require an `X-API-Key` configured through `API_KEYS`. Search routes are rate limited; configure Redis with `REDIS_URL` for shared rate limits and short-lived search response caching. The in-memory limiter is development-only.
+
+## Module 19 — Deployment and performance
+
+See [Docker Compose, Monitoring, and Performance](docs/19-docker-compose-monitoring-performance.md). Copy `.env.example` to `.env`, configure the database password, API key, and permitted crawl domains, then run `docker compose up --build -d`. Add `--profile observability` to start Prometheus. Ollama is expected to run on the host and is reached at `host.docker.internal` by default.
