@@ -99,3 +99,28 @@ class DocumentDetail(DocumentSummary):
 
 class HealthResponse(BaseModel):
     status: str = Field(default="ok")
+
+
+class SemanticIndexResponse(BaseModel):
+    page_id: UUID
+    version_id: UUID
+    chunk_count: int
+    embedding_model: str
+
+
+class SemanticSearchItem(BaseModel):
+    page_id: UUID
+    version_id: UUID
+    chunk_id: UUID
+    url: str
+    title: str
+    domain: str
+    content: str
+    distance: float
+    score: float
+
+
+class SemanticSearchResponse(BaseModel):
+    query: str
+    limit: int
+    results: list[SemanticSearchItem]
