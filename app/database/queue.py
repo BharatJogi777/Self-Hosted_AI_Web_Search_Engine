@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.database.jobs import CrawlJob
@@ -168,6 +168,18 @@ class CrawlJobRepository:
                     delay = min(300, 2 ** min(job.attempts, 8))
                     job.available_at = now + timedelta(seconds=delay)
                 return True
+
+    async def queue_counts(self) -> dict[str, int]:
+        async with self.sessions() as session:
+            rows = await session.execute(
+                select(CrawlJob.status, func.count())
+                .where(CrawlJob.status.in_(("pending", "running")))
+                .group_by(CrawlJob.status)
+            )
+            counts = {"pending": 0, "running": 0}
+            for status, count in rows:
+                counts[status] = count
+            return counts
 
     async def get_active_by_url(self, url: str) -> CrawlJob | None:
         async with self.sessions() as session:
