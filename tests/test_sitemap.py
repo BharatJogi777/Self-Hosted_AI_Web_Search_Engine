@@ -1,6 +1,6 @@
 import pytest
 
-from app.crawler.sitemap import parse_sitemap
+from app.crawler.sitemap import parse_sitemap, parse_sitemap_document
 
 
 def test_parse_urlset_with_namespace():
@@ -26,3 +26,17 @@ def test_entry_limit():
 def test_invalid_xml():
     with pytest.raises(ValueError):
         parse_sitemap(b"<not-closed>")
+
+
+
+def test_parser_identifies_sitemap_index():
+    xml = b"<sitemapindex><sitemap><loc>https://example.com/child.xml</loc></sitemap></sitemapindex>"
+    kind, entries = parse_sitemap_document(xml)
+    assert kind == "index"
+    assert entries[0].location.endswith("child.xml")
+
+
+def test_parser_identifies_urlset():
+    kind, entries = parse_sitemap_document(b"<urlset><url><loc>https://example.com/a</loc></url></urlset>")
+    assert kind == "urlset"
+    assert entries[0].location.endswith("/a")
