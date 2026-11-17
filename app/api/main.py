@@ -12,7 +12,7 @@ from app.api.schemas import (
     CrawlResponse,
     CrawlJobRequest,
     CrawlJobAccepted,
-    CrawlJobStatus,
+    CrawlJobStatus,\n    CrawlRunRequest,\n    CrawlRunAccepted,\n    CrawlRunStatus,
     DocumentDetail,
     DocumentSummary,
     HealthResponse,
@@ -138,7 +138,51 @@ def create_app() -> FastAPI:
                 raise
         return CrawlJobAccepted(job_id=job.id, status=job.status)
 
-    @app.get("/crawl-jobs/{job_id}", response_model=CrawlJobStatus)
+
+    @app.post("/crawl-runs", response_model=CrawlRunAccepted, status_code=202)
+    async def create_crawl_run(request: Request, payload: CrawlRunRequest):
+        policy = getattr(request.app.state, "url_policy", None)
+        repository = getattr(request.app.state, "crawl_job_repository", None)
+        if policy is None or repository is None:
+            raise HTTPException(status_code=503, detail="Crawling is disabled; configure ALLOWED_DOMAINS first")
+        try:
+            seed_url = policy.normalize(str(payload.url))
+            run, seed_job = await repository.create_run(
+                seed_url,
+                max_pages=payload.max_pages,
+                max_depth=payload.max_depth,
+                max_attempts=payload.max_attempts,
+            )
+        except URLRejected as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            from sqlalchemy.exc import IntegrityError
+            if isinstance(exc, IntegrityError):
+                raise HTTPException(status_code=409, detail="This URL already has an active crawl job") from exc
+            raise
+        return CrawlRunAccepted(
+            run_id=run.id, seed_job_id=seed_job.id, status=run.status,
+            max_pages=run.max_pages, max_depth=run.max_depth,
+        )
+
+    @app.get("/crawl-runs/{run_id}", response_model=CrawlRunStatus)
+    async def get_crawl_run(request: Request, run_id: str):
+        from uuid import UUID
+        try:
+            parsed_id = UUID(run_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid run ID") from exc
+        repository = request.app.state.crawl_job_repository
+        run = await repository.get_run(parsed_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Crawl run not found")
+        counts = await repository.run_job_counts(parsed_id)
+        return CrawlRunStatus(
+            run_id=run.id, seed_url=run.seed_url, status=run.status,
+            max_pages=run.max_pages, max_depth=run.max_depth,
+            discovered_count=run.discovered_count, job_counts=counts,
+        )
+\n    @app.get("/crawl-jobs/{job_id}", response_model=CrawlJobStatus)
     async def get_crawl_job(request: Request, job_id: str):
         from uuid import UUID
         try:
