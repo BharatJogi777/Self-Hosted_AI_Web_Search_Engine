@@ -8,7 +8,7 @@ from uuid import UUID
 from app.search.hybrid_search import HybridSearchRepository, HybridSearchResult
 
 
-_TOKEN_RE = re.compile(r"[\\w]+", re.UNICODE)
+_TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
 
 
 @dataclass(frozen=True)
