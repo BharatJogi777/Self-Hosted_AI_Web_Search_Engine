@@ -60,6 +60,7 @@ async def _worker_slot(
     jobs: CrawlJobRepository,
     domains: CrawlDomainRepository,
     ingestion: IngestionService,
+    sitemap_discovery: SitemapDiscoveryService,
     shutdown: asyncio.Event,
     lease_seconds: int,
     poll_seconds: float,
@@ -113,6 +114,12 @@ async def _worker_slot(
         try:
             async with domain_locks.setdefault(domain, asyncio.Lock()):
                 saved, _ = await ingestion.crawl_one(job.url)
+                if job.run_id is not None and job.depth == 0:
+                    discovered_urls = await sitemap_discovery.discover(job.url)
+                    for discovered_url in discovered_urls:
+                        await jobs.enqueue_run_url(
+                            job.run_id, discovered_url, depth=1, parent_url=job.url
+                        )
 
             if lost_lease.is_set():
                 LEASE_LOST.inc()
@@ -121,6 +128,8 @@ async def _worker_slot(
 
             completed = await jobs.complete(job.id, owner_token, saved.page_id)
             if completed:
+                if job.run_id is not None:
+                    await jobs.refresh_run_status(job.run_id)
                 JOBS_COMPLETED.inc()
                 logger.info(
                     "Crawl job completed",
@@ -138,6 +147,8 @@ async def _worker_slot(
                             "job_id": str(job.id), "attempt": job.attempts})
             if not lost_lease.is_set():
                 await jobs.fail(job.id, owner_token, f"{type(exc).__name__}: {exc}")
+                if job.run_id is not None:
+                    await jobs.refresh_run_status(job.run_id)
                 if job.run_id is not None:
                     await jobs.refresh_run_status(job.run_id)
         finally:
@@ -173,6 +184,7 @@ async def run_worker() -> None:
     domain_repository = CrawlDomainRepository(sessions)
     ingestion = IngestionService(policy, fetcher, pages)
     sitemap_discovery = SitemapDiscoveryService(policy, fetcher)
+    sitemap_discovery = SitemapDiscoveryService(policy, fetcher)
     worker_id = os.getenv("WORKER_ID", f"{socket.gethostname()}-{uuid.uuid4()}")
     shutdown = asyncio.Event()
     domain_locks: dict[str, asyncio.Lock] = {}
@@ -187,7 +199,7 @@ async def run_worker() -> None:
         logger.info("Worker process started", extra={"event": "worker_started", "worker_id": worker_id, "concurrency": concurrency})
         slots = [
             asyncio.create_task(
-                _worker_slot(slot, worker_id, jobs, domain_repository, ingestion,
+                _worker_slot(slot, worker_id, jobs, domain_repository, ingestion, sitemap_discovery,
                              shutdown, lease_seconds, poll_seconds, domain_locks)
             )
             for slot in range(concurrency)
