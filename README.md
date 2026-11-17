@@ -25,18 +25,18 @@ This project is not intended to reproduce Google's global index. The initial sea
 6. Semantic search with embeddings and pgvector
 7. Hybrid retrieval
 8. Ranking and reranking
-9. FastAPI search API
+9. [FastAPI search API and ingestion](docs/08-fastapi-api-and-ingestion.md)
 10. LangChain integration
 11. MCP integration
-12. Production deployment and operations
+12. Durable crawl workers and production operations
 
 ## Planned technology
 
 - Python 3.12+
-- FastAPI
+- FastAPI + Uvicorn
 - PostgreSQL 16 and pgvector
 - PostgreSQL full-text search
-- httpx, BeautifulSoup, Trafilatura
+- aiohttp, BeautifulSoup, Trafilatura
 - Ollama for local embeddings and generation
 - LangChain and MCP for agent integration
 - pytest and Docker Compose
@@ -47,6 +47,12 @@ Exact dependency versions will be pinned as implementation begins.
 
 The crawler must identify itself, respect robots.txt and site terms, apply per-host rate limits, use bounded timeouts and response sizes, avoid private or local network addresses, and provide a way to stop or exclude crawling. Do not bypass authentication, paywalls, CAPTCHAs, or access controls.
 
-## Status
+## Current implementation
 
-Documentation and architecture phase. Implementation will be added in small, tested increments.
+- Scoped URL policy and bounded asynchronous HTTP fetcher.
+- HTML extraction and content hashing.
+- PostgreSQL page/version persistence and Alembic migrations.
+- PostgreSQL full-text search with weighted title/body vectors.
+- FastAPI endpoints for health, controlled single-page crawling, search, and document metadata.
+
+The project is under active development. Run the test suite and apply migrations against PostgreSQL before relying on the implementation in production.
