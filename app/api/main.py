@@ -12,7 +12,10 @@ from app.api.schemas import (
     CrawlResponse,
     CrawlJobRequest,
     CrawlJobAccepted,
-    CrawlJobStatus,\n    CrawlRunRequest,\n    CrawlRunAccepted,\n    CrawlRunStatus,
+    CrawlJobStatus,
+    CrawlRunRequest,
+    CrawlRunAccepted,
+    CrawlRunStatus,
     DocumentDetail,
     DocumentSummary,
     HealthResponse,
@@ -182,7 +185,8 @@ def create_app() -> FastAPI:
             max_pages=run.max_pages, max_depth=run.max_depth,
             discovered_count=run.discovered_count, job_counts=counts,
         )
-\n    @app.get("/crawl-jobs/{job_id}", response_model=CrawlJobStatus)
+
+    @app.get("/crawl-jobs/{job_id}", response_model=CrawlJobStatus)
     async def get_crawl_job(request: Request, job_id: str):
         from uuid import UUID
         try:
