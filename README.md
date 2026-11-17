@@ -26,9 +26,9 @@ This project is not intended to reproduce Google's global index. The initial sea
 7. Hybrid retrieval
 8. Ranking and reranking
 9. [FastAPI search API and ingestion](docs/08-fastapi-api-and-ingestion.md)
-10. LangChain integration
-11. MCP integration
-12. Durable crawl workers and production operations
+10. [Durable crawl queue and workers](docs/09-durable-crawl-queue-and-workers.md)
+11. Semantic and hybrid search
+12. LangChain and MCP integration
 
 ## Planned technology
 
@@ -53,6 +53,7 @@ The crawler must identify itself, respect robots.txt and site terms, apply per-h
 - HTML extraction and content hashing.
 - PostgreSQL page/version persistence and Alembic migrations.
 - PostgreSQL full-text search with weighted title/body vectors.
-- FastAPI endpoints for health, controlled single-page crawling, search, and document metadata.
+- FastAPI endpoints for health, controlled crawling, search, document metadata, and durable crawl-job submission/status.
+- PostgreSQL-backed crawl queue with worker leases, retry backoff, and independent worker process.
 
 The project is under active development. Run the test suite and apply migrations against PostgreSQL before relying on the implementation in production.
