@@ -127,3 +127,64 @@ async def test_expired_lease_owner_cannot_mark_job_failed():
     assert loaded is not None
     assert loaded.status == "running"
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_crawl_run_enforces_atomic_page_and_depth_budget():
+    from app.database.runs import CrawlRun
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    repository = CrawlJobRepository(sessions)
+
+    run, seed = await repository.create_run(
+        "https://example.com/", max_pages=2, max_depth=1
+    )
+    assert seed.run_id == run.id
+    assert seed.depth == 0
+    assert run.discovered_count == 1
+
+    accepted = await repository.enqueue_run_url(
+        run.id, "https://example.com/a", depth=1, parent_url=seed.url
+    )
+    over_budget = await repository.enqueue_run_url(
+        run.id, "https://example.com/b", depth=1, parent_url=seed.url
+    )
+    over_depth = await repository.enqueue_run_url(
+        run.id, "https://example.com/c", depth=2, parent_url=seed.url
+    )
+
+    assert accepted is True
+    assert over_budget is False
+    assert over_depth is False
+    loaded_run = await repository.get_run(run.id)
+    assert loaded_run is not None
+    assert loaded_run.discovered_count == 2
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_crawl_run_duplicate_url_does_not_consume_budget():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    repository = CrawlJobRepository(sessions)
+
+    run, seed = await repository.create_run(
+        "https://example.com/", max_pages=5, max_depth=2
+    )
+    assert await repository.enqueue_run_url(
+        run.id, "https://example.com/a", depth=1, parent_url=seed.url
+    )
+    assert not await repository.enqueue_run_url(
+        run.id, "https://example.com/a", depth=1, parent_url=seed.url
+    )
+    loaded_run = await repository.get_run(run.id)
+    assert loaded_run is not None
+    assert loaded_run.discovered_count == 2
+
+    await engine.dispose()
