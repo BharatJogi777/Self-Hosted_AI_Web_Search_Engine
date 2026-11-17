@@ -29,6 +29,8 @@ from app.api.schemas import (
     RerankedSearchItem,
     RerankedSearchResponse,
     QuerySuggestionResponse,
+    AskRequest,
+    AskResponse,
 )
 from app.crawler.fetcher import FetchError, SafeHTTPFetcher
 from app.crawler.url_policy import URLPolicy, URLRejected
@@ -45,6 +47,8 @@ from app.services.ingestion import IngestionService, RobotsDeniedError
 from app.api.security import configured_api_keys, require_api_key
 from app.api.rate_limit import FixedWindowRateLimiter
 from app.api.cache import cache_key
+from app.llm.ollama_chat import OllamaChatClient, OllamaChatError
+from app.llm.grounded_qa import GroundedQAService
 
 
 def configured_domains() -> frozenset[str]:
@@ -90,6 +94,12 @@ def create_app() -> FastAPI:
             timeout_seconds=float(os.getenv("EMBEDDING_TIMEOUT_SECONDS", "60")),
         )
         app.state.embedding_client = embedding_client
+        chat_client = OllamaChatClient(
+            base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
+            model=os.getenv("LLM_MODEL", "qwen3:4b"),
+            timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "120")),
+        )
+        app.state.chat_client = chat_client
         app.state.semantic_search_repository = SemanticSearchRepository(
             sessions,
             embedding_client,
@@ -113,6 +123,18 @@ def create_app() -> FastAPI:
                 os.getenv("HYBRID_CANDIDATE_LIMIT", "50"),
             )),
         )
+        async def search_for_grounded_answer(query: str, limit: int):
+            processed = app.state.query_processor.process(query)
+            results = await app.state.reranked_search_repository.search(
+                processed.expanded, limit=limit
+            )
+            return [item.__dict__ for item in results]
+
+        app.state.grounded_qa = GroundedQAService(
+            chat_client,
+            search_for_grounded_answer,
+            max_tool_rounds=int(os.getenv("LLM_MAX_TOOL_ROUNDS", "3")),
+        )
         app.state.ingestion_service = (
             IngestionService(policy, fetcher, app.state.page_repository)
             if policy and fetcher else None
@@ -122,6 +144,7 @@ def create_app() -> FastAPI:
         finally:
             if redis_client is not None:
                 await redis_client.aclose()
+            await chat_client.close()
             await embedding_client.close()
             await engine.dispose()
 
@@ -134,42 +157,66 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def protect_search_traffic(request: Request, call_next):
-        if request.method == "GET" and request.url.path.startswith("/search"):
-            peer = request.client.host if request.client else "unknown"
-            limiter = request.app.state.rate_limiter
-            decision = await limiter.check(peer, request.app.state.redis)
-            if not decision.allowed:
-                return Response(
-                    content='{"detail":"Rate limit exceeded"}',
-                    status_code=429,
-                    media_type="application/json",
-                    headers={"Retry-After": str(decision.retry_after)},
-                )
+        is_search = request.method == "GET" and request.url.path.startswith("/search")
+        is_ask = request.method == "POST" and request.url.path == "/ask"
+        if not (is_search or is_ask):
+            return await call_next(request)
 
-            redis_client = request.app.state.redis
-            key = cache_key(request.url.path, request.url.query.encode("utf-8"))
-            if redis_client is not None:
-                cached = await redis_client.get(key)
-                if cached is not None:
-                    return Response(
-                        content=cached,
-                        status_code=200,
-                        media_type="application/json",
-                        headers={"X-Cache": "HIT"},
-                    )
-            response = await call_next(request)
-            if redis_client is not None and response.status_code == 200:
-                body = b"".join([chunk async for chunk in response.body_iterator])
-                await redis_client.setex(key, int(os.getenv("SEARCH_CACHE_TTL_SECONDS", "30")), body)
-                return Response(
-                    content=body,
-                    status_code=response.status_code,
-                    headers={k: v for k, v in response.headers.items() if k.lower() not in {"content-length", "content-type"}},
-                    media_type="application/json",
-                    background=response.background,
-                )
-            return response
-        return await call_next(request)
+        peer = request.client.host if request.client else "unknown"
+        decision = await request.app.state.rate_limiter.check(
+            peer, request.app.state.redis
+        )
+        if not decision.allowed:
+            return Response(
+                content='{"detail":"Rate limit exceeded"}',
+                status_code=429,
+                media_type="application/json",
+                headers={"Retry-After": str(decision.retry_after)},
+            )
+
+        # Cache only public GET search responses. LLM answers are never cached here.
+        redis_client = request.app.state.redis
+        if not is_search or redis_client is None:
+            return await call_next(request)
+
+        key = cache_key(request.url.path, request.url.query.encode("utf-8"))
+        cached = await redis_client.get(key)
+        if cached is not None:
+            return Response(
+                content=cached,
+                status_code=200,
+                media_type="application/json",
+                headers={"X-Cache": "HIT"},
+            )
+
+        response = await call_next(request)
+        if response.status_code == 200:
+            body = b"".join([chunk async for chunk in response.body_iterator])
+            await redis_client.setex(
+                key, int(os.getenv("SEARCH_CACHE_TTL_SECONDS", "30")), body
+            )
+            return Response(
+                content=body,
+                status_code=response.status_code,
+                headers={
+                    k: v for k, v in response.headers.items()
+                    if k.lower() not in {"content-length", "content-type"}
+                },
+                media_type="application/json",
+                background=response.background,
+            )
+        return response
+
+    @app.post("/ask", response_model=AskResponse)
+    async def ask(request: Request, payload: AskRequest):
+        service = request.app.state.grounded_qa
+        try:
+            result = await service.answer(payload.question)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except OllamaChatError as exc:
+            raise HTTPException(status_code=502, detail="LLM provider is unavailable") from exc
+        return AskResponse(**result)
 
     @app.get("/health/live", response_model=HealthResponse)
     async def health_live():
