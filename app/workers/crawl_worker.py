@@ -95,6 +95,8 @@ async def _worker_slot(
         except Exception:
             logger.exception("Unable to acquire domain lease", extra={"event": "domain_lease_error"})
             await jobs.fail(job.id, owner_token, "Domain lease acquisition failed")
+            if job.run_id is not None:
+                await jobs.refresh_run_status(job.run_id)
             continue
         if not acquired:
             await jobs.defer(job.id, owner_token, delay_seconds=2.0)
