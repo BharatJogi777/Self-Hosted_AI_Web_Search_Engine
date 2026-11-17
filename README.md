@@ -28,7 +28,7 @@ This project is not intended to reproduce Google's global index. The initial sea
 9. [FastAPI search API and ingestion](docs/08-fastapi-api-and-ingestion.md)
 10. [Durable crawl queue and workers](docs/09-durable-crawl-queue-and-workers.md)
 11. [Worker reliability and observability](docs/10-worker-reliability-and-observability.md)
-12. Distributed crawling and politeness
+12. [Distributed crawling and politeness](docs/11-distributed-crawling-and-politeness.md)
 13. Semantic and hybrid search
 14. LangChain and MCP integration
 
