@@ -39,6 +39,7 @@ from app.search.ollama_embeddings import EmbeddingError, OllamaEmbeddingClient
 from app.search.semantic_search import SemanticSearchRepository
 from app.search.hybrid_search import HybridSearchRepository
 from app.search.ranking import RerankedSearchRepository, TermCoverageReranker
+from app.search.query_understanding import default_query_processor
 from app.services.ingestion import IngestionService, RobotsDeniedError
 
 
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
             candidate_limit=int(os.getenv("HYBRID_CANDIDATE_LIMIT", "50")),
         )
         app.state.hybrid_search_repository = hybrid_repository
+        app.state.query_processor = default_query_processor()
         app.state.reranked_search_repository = RerankedSearchRepository(
             hybrid_repository,
             TermCoverageReranker(rrf_k=int(os.getenv("HYBRID_RRF_K", "60"))),
@@ -336,8 +338,12 @@ def create_app() -> FastAPI:
         domain: str | None = Query(default=None, max_length=255),
     ):
         repository = request.app.state.reranked_search_repository
+        processor = request.app.state.query_processor
         try:
-            results = await repository.search(q, limit=limit, domain=domain)
+            processed = processor.process(q)
+            results = await repository.search(
+                processed.expanded, limit=limit, domain=domain
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except EmbeddingError as exc:
@@ -345,8 +351,24 @@ def create_app() -> FastAPI:
         return RerankedSearchResponse(
             query=q,
             limit=limit,
+            normalized_query=processed.normalized,
+            corrected_query=processed.corrected,
+            expanded_query=processed.expanded,
             results=[RerankedSearchItem(**item.__dict__) for item in results],
         )
+
+    @app.get("/search/suggestions", response_model=QuerySuggestionResponse)
+    async def search_suggestions(
+        request: Request,
+        q: str = Query(min_length=1, max_length=300),
+        limit: int = Query(default=5, ge=1, le=10),
+    ):
+        processor = request.app.state.query_processor
+        try:
+            suggestions = processor.suggest(q, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return QuerySuggestionResponse(query=q, suggestions=suggestions)
 
     @app.get("/documents", response_model=list[DocumentSummary])
     async def list_documents(
