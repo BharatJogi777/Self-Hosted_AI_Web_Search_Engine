@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from xml.etree import ElementTree
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,7 +20,7 @@ def parse_sitemap_document(
         raise ValueError("max_entries must be positive")
     try:
         root = ElementTree.fromstring(xml_body)
-    except ElementTree.ParseError as exc:
+    except (ElementTree.ParseError, DefusedXmlException) as exc:
         raise ValueError("Invalid sitemap XML") from exc
 
     root_name = root.tag.rsplit("}", 1)[-1].lower()
