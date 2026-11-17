@@ -40,3 +40,10 @@ def test_parser_identifies_urlset():
     kind, entries = parse_sitemap_document(b"<urlset><url><loc>https://example.com/a</loc></url></urlset>")
     assert kind == "urlset"
     assert entries[0].location.endswith("/a")
+
+
+def test_rejects_entity_expansion_payload():
+    malicious = b'''<!DOCTYPE foo [<!ENTITY x "expanded">]>
+    <urlset><url><loc>&x;</loc></url></urlset>'''
+    with pytest.raises(ValueError):
+        parse_sitemap(malicious)
