@@ -76,6 +76,19 @@ class CrawlJobRepository:
         now = datetime.now(timezone.utc)
         async with self.sessions() as session:
             async with session.begin():
+                # A worker may die on its final permitted attempt. Expire such
+                # jobs as failed rather than leaving them stuck in "running".
+                await session.execute(text("""
+                    UPDATE crawl_jobs
+                    SET status = 'failed',
+                        locked_by = NULL,
+                        locked_until = NULL,
+                        last_error = COALESCE(last_error, 'Worker lease expired after final attempt'),
+                        updated_at = :now
+                    WHERE status = 'running'
+                      AND locked_until < :now
+                      AND attempts >= max_attempts
+                """), {"now": now})
                 row = (await session.execute(statement, {
                     "now": now,
                     "worker_id": worker_id,
