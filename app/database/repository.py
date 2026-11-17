@@ -81,6 +81,7 @@ class PageRepository:
                         page_id=page.id,
                         version_number=next_version,
                         content_hash=document.content_hash,
+                        title_snapshot=document.title or "",
                         extracted_text=document.text,
                         extractor=document.extractor,
                         fetched_at=now,
