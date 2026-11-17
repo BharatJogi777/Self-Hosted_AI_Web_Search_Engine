@@ -153,6 +153,7 @@ class CrawlJobRepository:
                         CrawlJob.id == job_id,
                         CrawlJob.status == "running",
                         CrawlJob.locked_by == worker_id,
+                        CrawlJob.locked_until > datetime.now(timezone.utc),
                     ).with_for_update()
                 )
                 if job is None:
