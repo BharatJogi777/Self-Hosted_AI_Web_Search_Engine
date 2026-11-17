@@ -142,3 +142,25 @@ class HybridSearchResponse(BaseModel):
     query: str
     limit: int
     results: list[HybridSearchItem]
+
+
+class RerankedSearchItem(BaseModel):
+    page_id: UUID
+    version_id: UUID
+    url: str
+    title: str
+    domain: str
+    snippet: str
+    fusion_score: float
+    lexical_rank: int | None
+    semantic_rank: int | None
+    ranking_score: float
+    title_coverage: float
+    snippet_coverage: float
+    exact_title_match: bool
+
+
+class RerankedSearchResponse(BaseModel):
+    query: str
+    limit: int
+    results: list[RerankedSearchItem]
