@@ -64,6 +64,12 @@ See [Search Ranking and Reranking](docs/15-search-ranking-and-reranking.md).
 
 The `GET /search/reranked` endpoint retrieves hybrid candidates and reorders them using normalized RRF, title-term coverage, snippet-term coverage, and exact title phrase matching. Configure `RERANK_CANDIDATE_LIMIT` (defaults to `HYBRID_CANDIDATE_LIMIT`, which defaults to 50). The baseline is deterministic and has no additional model dependency.
 
+## Module 16 — Search quality evaluation
+
+See [Search Quality Evaluation](docs/16-search-quality-evaluation.md).
+
+The offline evaluator computes Precision@k, Recall@k, MRR@k, MAP@k, and NDCG@k from human relevance judgments. Start with `python scripts/evaluate_search.py`; replace the synthetic starter judgments and sample run with results from your own corpus. These sample metrics are illustrative, not a real benchmark.
+
 ## Important crawler safeguards
 
 The crawler must identify itself, respect robots.txt and site terms, apply per-host rate limits, use bounded timeouts and response sizes, avoid private or local network addresses, and provide a way to stop or exclude crawling. Do not bypass authentication, paywalls, CAPTCHAs, or access controls.
