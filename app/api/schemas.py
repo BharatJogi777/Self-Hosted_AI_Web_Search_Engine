@@ -172,3 +172,20 @@ class RerankedSearchResponse(BaseModel):
 class QuerySuggestionResponse(BaseModel):
     query: str
     suggestions: list[str]
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class AskSource(BaseModel):
+    id: str
+    url: str
+    title: str
+
+
+class AskResponse(BaseModel):
+    question: str
+    answer: str
+    sources: list[AskSource]
+    tool_calls: int
