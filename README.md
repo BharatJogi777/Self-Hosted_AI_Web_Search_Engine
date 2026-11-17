@@ -99,6 +99,8 @@ The crawler must identify itself, respect robots.txt and site terms, apply per-h
 - Two-stage ranking with a lightweight reranking baseline.
 - API-key protection for crawl/index operations, search rate limiting, and optional Redis-backed search response caching.
 - Docker Compose deployment with PostgreSQL/pgvector, Redis, migration job, API, crawl worker, optional Prometheus, and an asynchronous search load-test utility.
+- Ollama tool-calling grounded question answering with source references.
+- MCP server exposing read-only `search_web` and `get_document` tools.
 
 The project is under active development. Run the test suite and apply migrations against PostgreSQL before relying on the implementation in production.
 
@@ -109,3 +111,11 @@ See [Production API Security, Caching, and Rate Limiting](docs/18-production-api
 ## Module 19 — Deployment and performance
 
 See [Docker Compose, Monitoring, and Performance](docs/19-docker-compose-monitoring-performance.md). Copy `.env.example` to `.env`, configure the database password, API key, and permitted crawl domains, then run `docker compose up --build -d`. Add `--profile observability` to start Prometheus. Ollama is expected to run on the host and is reached at `host.docker.internal` by default.
+
+## Module 20 — LLM, MCP, and capstone
+
+See [LLM Integration, MCP, and Production Capstone](docs/20-llm-mcp-production-capstone.md). The `POST /ask` endpoint uses an Ollama chat model with bounded `search_web` tool calls and returns a grounded answer with source URLs. Start the stdio MCP server with `SEARCH_API_BASE_URL=http://localhost:8000 python -m app.mcp.server`; it exposes `search_web` and `get_document` tools. Configure `LLM_MODEL` (default `qwen3:4b`) and ensure your selected Ollama model supports tool calling.
+
+## Course completion
+
+The 20-module implementation sequence is complete. Treat it as a substantial learning project: run the complete test suite, apply migrations to a clean PostgreSQL/pgvector database, build the Docker images, and validate Ollama and MCP integration before any production deployment.
