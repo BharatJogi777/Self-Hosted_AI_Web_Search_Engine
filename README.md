@@ -18,22 +18,25 @@ This project is not intended to reproduce Google's global index. The initial sea
 ## Learning sequence
 
 1. [Architecture](docs/01-architecture.md)
-2. [Search engine fundamentals](docs/02-search-engine-fundamentals.md)
-3. Web crawling
-4. Content extraction
-5. Indexing and PostgreSQL full-text search
-6. Semantic search with embeddings and pgvector
-7. Hybrid retrieval
-8. Ranking and reranking
-9. [FastAPI search API and ingestion](docs/08-fastapi-api-and-ingestion.md)
-10. [Durable crawl queue and workers](docs/09-durable-crawl-queue-and-workers.md)
-11. [Worker reliability and observability](docs/10-worker-reliability-and-observability.md)
-12. [Distributed crawling and politeness](docs/11-distributed-crawling-and-politeness.md)
-13. [Sitemap discovery and bounded crawl runs](docs/12-production-sitemap-discovery-and-crawl-runs.md)
-14. Semantic and hybrid search
-15. Ranking and reranking
+2. Search engine fundamentals
+3. Web crawling and URL safety
+4. HTTP fetching and politeness
+5. HTML content extraction
+6. Document storage and versioning
+7. PostgreSQL full-text search
+8. FastAPI API and ingestion
+9. Durable crawl queue and workers
+10. Worker reliability and observability
+11. Distributed crawling and politeness
+12. Sitemap discovery and bounded crawl runs
+13. Semantic search with Ollama and pgvector
+14. Hybrid search and Reciprocal Rank Fusion
+15. Search ranking and reranking
 16. Search quality evaluation
-17. LangChain and MCP integration
+17. Query understanding, spelling correction, and suggestions
+18. Production API security, caching, and rate limiting
+19. Docker Compose deployment, monitoring, and performance
+20. LLM integration, MCP server, and production capstone
 
 ## Planned technology
 
