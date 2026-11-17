@@ -64,7 +64,7 @@ Attempts are incremented when a worker claims a job. Once attempts reach max_att
 
 A partial unique index permits only one pending or running job for a URL. This prevents two active jobs for the same URL even if concurrent API requests race. Completed and failed jobs do not block future recrawls.
 
-The repository performs a friendly pre-check, while the database index is the final concurrency guard. A concurrent duplicate insert can still raise an integrity error in this first implementation; production hardening should catch that conflict and return the already-active job.
+The repository performs a friendly pre-check, while the database index is the final concurrency guard. The API catches a concurrent unique-index conflict and looks up the already-active job. This is still a first version; verify this behavior under PostgreSQL concurrency tests.
 
 ## 7. Run the worker
 
