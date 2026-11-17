@@ -149,8 +149,6 @@ async def _worker_slot(
                 await jobs.fail(job.id, owner_token, f"{type(exc).__name__}: {exc}")
                 if job.run_id is not None:
                     await jobs.refresh_run_status(job.run_id)
-                if job.run_id is not None:
-                    await jobs.refresh_run_status(job.run_id)
         finally:
             heartbeat_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -183,7 +181,6 @@ async def run_worker() -> None:
     jobs = CrawlJobRepository(sessions)
     domain_repository = CrawlDomainRepository(sessions)
     ingestion = IngestionService(policy, fetcher, pages)
-    sitemap_discovery = SitemapDiscoveryService(policy, fetcher)
     sitemap_discovery = SitemapDiscoveryService(policy, fetcher)
     worker_id = os.getenv("WORKER_ID", f"{socket.gethostname()}-{uuid.uuid4()}")
     shutdown = asyncio.Event()
