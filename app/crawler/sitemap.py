@@ -11,13 +11,10 @@ class SitemapEntry:
     last_modified: str | None = None
 
 
-def parse_sitemap(xml_body: bytes, *, max_entries: int = 10_000) -> list[SitemapEntry]:
-    """Parse a sitemap urlset or sitemapindex with a strict entry limit.
-
-    XML is parsed by the standard library; callers must also enforce a small
-    HTTP response-size limit before passing bytes here. This function does not
-    fetch nested sitemap files or authorize the returned URLs.
-    """
+def parse_sitemap_document(
+    xml_body: bytes, *, max_entries: int = 10_000
+) -> tuple[str, list[SitemapEntry]]:
+    """Return ('urlset'|'index', entries), enforcing an entry limit."""
     if max_entries < 1:
         raise ValueError("max_entries must be positive")
     try:
@@ -25,6 +22,10 @@ def parse_sitemap(xml_body: bytes, *, max_entries: int = 10_000) -> list[Sitemap
     except ElementTree.ParseError as exc:
         raise ValueError("Invalid sitemap XML") from exc
 
+    root_name = root.tag.rsplit("}", 1)[-1].lower()
+    if root_name not in {"urlset", "sitemapindex"}:
+        raise ValueError("Unsupported sitemap root element")
+    kind = "index" if root_name == "sitemapindex" else "urlset"
     entries: list[SitemapEntry] = []
     for node in list(root):
         if len(entries) >= max_entries:
@@ -39,4 +40,9 @@ def parse_sitemap(xml_body: bytes, *, max_entries: int = 10_000) -> list[Sitemap
                 last_modified = child.text.strip()
         if location:
             entries.append(SitemapEntry(location, last_modified))
-    return entries
+    return kind, entries
+
+
+def parse_sitemap(xml_body: bytes, *, max_entries: int = 10_000) -> list[SitemapEntry]:
+    """Compatibility helper returning entries from either sitemap format."""
+    return parse_sitemap_document(xml_body, max_entries=max_entries)[1]
