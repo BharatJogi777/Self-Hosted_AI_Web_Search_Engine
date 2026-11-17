@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.crawler.fetcher import FetchError, SafeHTTPFetcher
 from app.crawler.url_policy import URLPolicy
-from app.database.jobs import CrawlJob
 from app.database.queue import CrawlJobRepository
 from app.database.repository import PageRepository
 from app.services.ingestion import IngestionService
