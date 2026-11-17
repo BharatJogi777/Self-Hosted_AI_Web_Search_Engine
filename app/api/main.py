@@ -80,7 +80,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail="Database is unavailable") from exc
         return HealthResponse(status="ready")
 
-    @app.post("/crawl", response_model=CrawlResponse, status_code=202)
+    @app.post("/crawl", response_model=CrawlResponse)
     async def crawl(request: Request, payload: CrawlRequest):
         service = getattr(request.app.state, "ingestion_service", None)
         if service is None:
