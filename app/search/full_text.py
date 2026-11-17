@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import Float, Integer, String, bindparam, literal_column, select
+from sqlalchemy import Integer, String, bindparam, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.database.models import Page, PageVersion
@@ -35,9 +35,9 @@ def build_search_statement(query: str, limit: int = 10, offset: int = 0):
 
     vector = literal_column("page_versions.search_vector")
     tsquery = bindparam("search_query", type_=String())
-    parsed_query = __import__("sqlalchemy").func.websearch_to_tsquery("english", tsquery)
-    score = __import__("sqlalchemy").func.ts_rank_cd(vector, parsed_query, 32).label("score")
-    snippet = __import__("sqlalchemy").func.ts_headline(
+    parsed_query = func.websearch_to_tsquery("english", tsquery)
+    score = func.ts_rank_cd(vector, parsed_query, 32).label("score")
+    snippet = func.ts_headline(
         "english", PageVersion.extracted_text, parsed_query,
         "MaxWords=30, MinWords=10, ShortWord=2, HighlightAll=FALSE"
     ).label("snippet")
