@@ -81,6 +81,25 @@ class CrawlJobRepository:
             # Duplicate URL in this run or an already-active global URL.
             return False
 
+    async def refresh_run_status(self, run_id: uuid.UUID) -> None:
+        """Mark a run complete after every queued job reaches a terminal state."""
+        async with self.sessions() as session:
+            async with session.begin():
+                run = await session.scalar(
+                    select(CrawlRun).where(CrawlRun.id == run_id).with_for_update()
+                )
+                if run is None or run.status != "running":
+                    return
+                active = await session.scalar(
+                    select(func.count()).select_from(CrawlJob).where(
+                        CrawlJob.run_id == run_id,
+                        CrawlJob.status.in_(("pending", "running")),
+                    )
+                )
+                if not active:
+                    run.status = "completed"
+                    run.completed_at = datetime.now(timezone.utc)
+
     async def get_run(self, run_id: uuid.UUID) -> CrawlRun | None:
         async with self.sessions() as session:
             return await session.get(CrawlRun, run_id)
