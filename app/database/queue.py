@@ -170,6 +170,29 @@ class CrawlJobRepository:
                     job.available_at = now + timedelta(seconds=delay)
                 return True
 
+    async def defer(self, job_id: uuid.UUID, worker_id: str, delay_seconds: float = 2.0) -> bool:
+        """Return a claimed job to pending when shared domain capacity is busy."""
+        now = datetime.now(timezone.utc)
+        async with self.sessions() as session:
+            async with session.begin():
+                result = await session.execute(
+                    update(CrawlJob)
+                    .where(
+                        CrawlJob.id == job_id,
+                        CrawlJob.status == "running",
+                        CrawlJob.locked_by == worker_id,
+                        CrawlJob.locked_until > now,
+                    )
+                    .values(
+                        status="pending",
+                        locked_by=None,
+                        locked_until=None,
+                        available_at=now + timedelta(seconds=max(0.5, delay_seconds)),
+                        updated_at=now,
+                    )
+                )
+                return result.rowcount == 1
+
     async def queue_counts(self) -> dict[str, int]:
         async with self.sessions() as session:
             rows = await session.execute(
