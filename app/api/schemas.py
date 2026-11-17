@@ -19,6 +19,28 @@ class CrawlResponse(BaseModel):
     final_url: str
 
 
+class CrawlJobRequest(BaseModel):
+    url: HttpUrl
+    max_attempts: int = Field(default=5, ge=1, le=10)
+
+
+class CrawlJobAccepted(BaseModel):
+    job_id: UUID
+    status: str
+
+
+class CrawlJobStatus(BaseModel):
+    job_id: UUID
+    url: str
+    status: str
+    attempts: int
+    max_attempts: int
+    last_error: str | None
+    result_page_id: UUID | None
+    created_at: datetime
+    completed_at: datetime | None
+
+
 class SearchItem(BaseModel):
     page_id: UUID
     version_id: UUID
