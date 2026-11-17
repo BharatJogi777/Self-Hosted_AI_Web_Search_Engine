@@ -187,6 +187,7 @@ class CrawlJobRepository:
                 return ClaimedJob(
                     id=row["id"], url=row["url"],
                     attempts=row["attempts"], max_attempts=row["max_attempts"],
+                    run_id=row["run_id"], depth=row["depth"],
                 )
 
     async def renew_lease(
