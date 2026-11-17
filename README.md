@@ -57,6 +57,6 @@ The crawler must identify itself, respect robots.txt and site terms, apply per-h
 - PostgreSQL full-text search with weighted title/body vectors.
 - FastAPI endpoints for health, controlled crawling, search, document metadata, and durable crawl-job submission/status.
 - PostgreSQL-backed crawl queue with worker leases, retry backoff, and independent worker process.
-- Worker lease heartbeat, configurable concurrency, graceful shutdown, JSON logs, and Prometheus metrics.
+- Worker lease heartbeat, configurable concurrency, graceful shutdown, JSON logs, and Prometheus metrics.\n- PostgreSQL-backed domain leases for cross-process crawl coordination, robots cache storage schema, and a bounded sitemap XML parser.
 
 The project is under active development. Run the test suite and apply migrations against PostgreSQL before relying on the implementation in production.
