@@ -1,0 +1,47 @@
+{
+  "queries": [
+    {
+      "query_id": "q1",
+      "query": "postgres connection pooling",
+      "relevance": {
+        "doc-postgres-pooling": 3,
+        "doc-postgres-connections": 2,
+        "doc-database-basics": 1
+      }
+    },
+    {
+      "query_id": "q2",
+      "query": "python async http client",
+      "relevance": {
+        "doc-python-httpx": 3,
+        "doc-python-asyncio": 2
+      }
+    },
+    {
+      "query_id": "q3",
+      "query": "vector similarity search",
+      "relevance": {
+        "doc-pgvector-indexes": 3,
+        "doc-vector-distance": 2,
+        "doc-postgres-backup": 0
+      }
+    },
+    {
+      "query_id": "q4",
+      "query": "fastapi request validation",
+      "relevance": {
+        "doc-fastapi-validation": 3,
+        "doc-pydantic-models": 2
+      }
+    },
+    {
+      "query_id": "q5",
+      "query": "distributed crawl worker retries",
+      "relevance": {
+        "doc-crawl-retries": 3,
+        "doc-worker-leases": 2,
+        "doc-html-extraction": 0
+      }
+    }
+  ]
+}
