@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.database.jobs import CrawlJob
@@ -100,6 +100,30 @@ class CrawlJobRepository:
                     attempts=row["attempts"], max_attempts=row["max_attempts"],
                 )
 
+    async def renew_lease(
+        self, job_id: uuid.UUID, worker_id: str, lease_seconds: int = 60
+    ) -> bool:
+        """Extend a lease only while this owner still holds an unexpired lease."""
+        if lease_seconds < 1:
+            raise ValueError("lease_seconds must be positive")
+        now = datetime.now(timezone.utc)
+        async with self.sessions() as session:
+            async with session.begin():
+                result = await session.execute(
+                    update(CrawlJob)
+                    .where(
+                        CrawlJob.id == job_id,
+                        CrawlJob.status == "running",
+                        CrawlJob.locked_by == worker_id,
+                        CrawlJob.locked_until > now,
+                    )
+                    .values(
+                        locked_until=now + timedelta(seconds=lease_seconds),
+                        updated_at=now,
+                    )
+                )
+                return result.rowcount == 1
+
     async def complete(self, job_id: uuid.UUID, worker_id: str, page_id: uuid.UUID) -> bool:
         async with self.sessions() as session:
             async with session.begin():
@@ -108,6 +132,7 @@ class CrawlJobRepository:
                         CrawlJob.id == job_id,
                         CrawlJob.status == "running",
                         CrawlJob.locked_by == worker_id,
+                        CrawlJob.locked_until > datetime.now(timezone.utc),
                     ).with_for_update()
                 )
                 if job is None:
