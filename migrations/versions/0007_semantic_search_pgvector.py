@@ -19,7 +19,7 @@ def upgrade() -> None:
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("content_hash", sa.String(length=64), nullable=False),
         sa.Column("embedding_model", sa.String(length=128), nullable=False),
-        sa.Column("embedding", sa.dialects.postgresql.ARRAY(sa.Float()), nullable=True),
+        sa.Column("embedding", sa.Text(), nullable=True),
         sa.ForeignKeyConstraint(["page_version_id"], ["page_versions.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
