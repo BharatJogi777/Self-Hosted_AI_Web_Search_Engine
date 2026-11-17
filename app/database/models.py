@@ -43,6 +43,7 @@ class PageVersion(Base):
     page_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("pages.id", ondelete="CASCADE"), index=True)
     version_number: Mapped[int] = mapped_column(Integer)
     content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    title_snapshot: Mapped[str] = mapped_column(Text, default="")
     extracted_text: Mapped[str] = mapped_column(Text)
     extractor: Mapped[str] = mapped_column(String(100))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
