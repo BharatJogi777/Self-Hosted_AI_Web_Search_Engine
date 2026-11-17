@@ -27,8 +27,10 @@ This project is not intended to reproduce Google's global index. The initial sea
 8. Ranking and reranking
 9. [FastAPI search API and ingestion](docs/08-fastapi-api-and-ingestion.md)
 10. [Durable crawl queue and workers](docs/09-durable-crawl-queue-and-workers.md)
-11. Semantic and hybrid search
-12. LangChain and MCP integration
+11. [Worker reliability and observability](docs/10-worker-reliability-and-observability.md)
+12. Distributed crawling and politeness
+13. Semantic and hybrid search
+14. LangChain and MCP integration
 
 ## Planned technology
 
@@ -55,5 +57,6 @@ The crawler must identify itself, respect robots.txt and site terms, apply per-h
 - PostgreSQL full-text search with weighted title/body vectors.
 - FastAPI endpoints for health, controlled crawling, search, document metadata, and durable crawl-job submission/status.
 - PostgreSQL-backed crawl queue with worker leases, retry backoff, and independent worker process.
+- Worker lease heartbeat, configurable concurrency, graceful shutdown, JSON logs, and Prometheus metrics.
 
 The project is under active development. Run the test suite and apply migrations against PostgreSQL before relying on the implementation in production.
