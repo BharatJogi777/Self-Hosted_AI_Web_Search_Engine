@@ -163,4 +163,12 @@ class RerankedSearchItem(BaseModel):
 class RerankedSearchResponse(BaseModel):
     query: str
     limit: int
+    normalized_query: str
+    corrected_query: str
+    expanded_query: str
     results: list[RerankedSearchItem]
+
+
+class QuerySuggestionResponse(BaseModel):
+    query: str
+    suggestions: list[str]
