@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.database.base import Base
 from app.database import models  # noqa: F401 - register ORM tables
 from app.database import jobs  # noqa: F401 - register crawl job table
-from app.database import domains  # noqa: F401 - register crawl domain table\nfrom app.database import runs  # noqa: F401 - register crawl run table
+from app.database import domains  # noqa: F401 - register crawl domain table
+from app.database import runs  # noqa: F401 - register crawl run table
 
 config = context.config
 if config.config_file_name is not None:
