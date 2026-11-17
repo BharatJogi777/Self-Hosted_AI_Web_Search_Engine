@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.database.jobs import CrawlJob
+from app.database.jobs import CrawlJob\nfrom app.database.runs import CrawlRun
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,73 @@ class CrawlJobRepository:
 
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self.sessions = sessions
+
+    async def create_run(
+        self, seed_url: str, *, max_pages: int = 100, max_depth: int = 2,
+        max_attempts: int = 5,
+    ) -> tuple[CrawlRun, CrawlJob]:
+        """Create a bounded run and reserve its seed URL in one transaction."""
+        if max_pages < 1 or max_depth < 0:
+            raise ValueError("max_pages must be positive and max_depth cannot be negative")
+        now = datetime.now(timezone.utc)
+        async with self.sessions() as session:
+            async with session.begin():
+                run = CrawlRun(
+                    seed_url=seed_url, status="running", max_pages=max_pages,
+                    max_depth=max_depth, discovered_count=1,
+                )
+                session.add(run)
+                await session.flush()
+                job = CrawlJob(
+                    url=seed_url, run_id=run.id, depth=0, parent_url=None,
+                    status="pending", attempts=0, max_attempts=max_attempts,
+                    available_at=now,
+                )
+                session.add(job)
+                await session.flush()
+                return run, job
+
+    async def enqueue_run_url(
+        self, run_id: uuid.UUID, url: str, *, depth: int, parent_url: str,
+        max_attempts: int = 5,
+    ) -> bool:
+        """Atomically reserve one run page slot and insert a unique run URL."""
+        from sqlalchemy.exc import IntegrityError
+        now = datetime.now(timezone.utc)
+        try:
+            async with self.sessions() as session:
+                async with session.begin():
+                    run = await session.scalar(
+                        select(CrawlRun).where(CrawlRun.id == run_id).with_for_update()
+                    )
+                    if run is None or run.status != "running" or depth > run.max_depth:
+                        return False
+                    if run.discovered_count >= run.max_pages:
+                        return False
+                    run.discovered_count += 1
+                    session.add(CrawlJob(
+                        url=url, run_id=run_id, depth=depth, parent_url=parent_url,
+                        status="pending", attempts=0, max_attempts=max_attempts,
+                        available_at=now,
+                    ))
+                    await session.flush()
+                    return True
+        except IntegrityError:
+            # Duplicate URL in this run or an already-active global URL.
+            return False
+
+    async def get_run(self, run_id: uuid.UUID) -> CrawlRun | None:
+        async with self.sessions() as session:
+            return await session.get(CrawlRun, run_id)
+
+    async def run_job_counts(self, run_id: uuid.UUID) -> dict[str, int]:
+        async with self.sessions() as session:
+            rows = await session.execute(
+                select(CrawlJob.status, func.count())
+                .where(CrawlJob.run_id == run_id)
+                .group_by(CrawlJob.status)
+            )
+            return {status: count for status, count in rows}
 
     async def enqueue(self, url: str, max_attempts: int = 5) -> CrawlJob:
         now = datetime.now(timezone.utc)
@@ -70,7 +137,7 @@ class CrawlJobRepository:
                 updated_at = :now
             FROM candidate
             WHERE job.id = candidate.id
-            RETURNING job.id, job.url, job.attempts, job.max_attempts
+            RETURNING job.id, job.url, job.attempts, job.max_attempts, job.run_id, job.depth
         """)
         now = datetime.now(timezone.utc)
         async with self.sessions() as session:
