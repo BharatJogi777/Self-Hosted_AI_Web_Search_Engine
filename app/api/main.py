@@ -26,6 +26,8 @@ from app.api.schemas import (
     SemanticSearchResponse,
     HybridSearchItem,
     HybridSearchResponse,
+    RerankedSearchItem,
+    RerankedSearchResponse,
 )
 from app.crawler.fetcher import FetchError, SafeHTTPFetcher
 from app.crawler.url_policy import URLPolicy, URLRejected
@@ -36,6 +38,7 @@ from app.search.postgres_search import PostgresSearchRepository
 from app.search.ollama_embeddings import EmbeddingError, OllamaEmbeddingClient
 from app.search.semantic_search import SemanticSearchRepository
 from app.search.hybrid_search import HybridSearchRepository
+from app.search.ranking import RerankedSearchRepository, TermCoverageReranker
 from app.services.ingestion import IngestionService, RobotsDeniedError
 
 
@@ -77,11 +80,20 @@ def create_app() -> FastAPI:
             chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "150")),
             batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "16")),
         )
-        app.state.hybrid_search_repository = HybridSearchRepository(
+        hybrid_repository = HybridSearchRepository(
             sessions,
             embedding_client,
             rrf_k=int(os.getenv("HYBRID_RRF_K", "60")),
             candidate_limit=int(os.getenv("HYBRID_CANDIDATE_LIMIT", "50")),
+        )
+        app.state.hybrid_search_repository = hybrid_repository
+        app.state.reranked_search_repository = RerankedSearchRepository(
+            hybrid_repository,
+            TermCoverageReranker(rrf_k=int(os.getenv("HYBRID_RRF_K", "60"))),
+            candidate_limit=int(os.getenv(
+                "RERANK_CANDIDATE_LIMIT",
+                os.getenv("HYBRID_CANDIDATE_LIMIT", "50"),
+            )),
         )
         app.state.ingestion_service = (
             IngestionService(policy, fetcher, app.state.page_repository)
@@ -144,7 +156,6 @@ def create_app() -> FastAPI:
             final_url=final_url,
         )
 
-
     @app.post("/crawl-jobs", response_model=CrawlJobAccepted, status_code=202)
     async def enqueue_crawl(request: Request, payload: CrawlJobRequest):
         policy = getattr(request.app.state, "url_policy", None)
@@ -161,7 +172,6 @@ def create_app() -> FastAPI:
         try:
             job = await repository.enqueue(normalized_url, payload.max_attempts)
         except Exception as exc:
-            # A concurrent duplicate may win the partial unique-index race.
             from sqlalchemy.exc import IntegrityError
             if not isinstance(exc, IntegrityError):
                 raise
@@ -169,7 +179,6 @@ def create_app() -> FastAPI:
             if job is None:
                 raise
         return CrawlJobAccepted(job_id=job.id, status=job.status)
-
 
     @app.post("/crawl-runs", response_model=CrawlRunAccepted, status_code=202)
     async def create_crawl_run(request: Request, payload: CrawlRunRequest):
@@ -248,9 +257,7 @@ def create_app() -> FastAPI:
     ):
         repository = request.app.state.search_repository
         try:
-            results = await repository.search(
-                q, limit=limit, offset=offset, domain=domain
-            )
+            results = await repository.search(q, limit=limit, offset=offset, domain=domain)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return SearchResponse(
@@ -259,8 +266,6 @@ def create_app() -> FastAPI:
             offset=offset,
             results=[SearchItem(**item.__dict__) for item in results],
         )
-
-
 
     @app.post("/documents/{document_id}/index", response_model=SemanticIndexResponse)
     async def index_document(request: Request, document_id: str):
@@ -303,8 +308,6 @@ def create_app() -> FastAPI:
             results=[SemanticSearchItem(**item.__dict__) for item in results],
         )
 
-
-
     @app.get("/search/hybrid", response_model=HybridSearchResponse)
     async def hybrid_search(
         request: Request,
@@ -325,6 +328,26 @@ def create_app() -> FastAPI:
             results=[HybridSearchItem(**item.__dict__) for item in results],
         )
 
+    @app.get("/search/reranked", response_model=RerankedSearchResponse)
+    async def reranked_search(
+        request: Request,
+        q: str = Query(min_length=1, max_length=1000),
+        limit: int = Query(default=10, ge=1, le=100),
+        domain: str | None = Query(default=None, max_length=255),
+    ):
+        repository = request.app.state.reranked_search_repository
+        try:
+            results = await repository.search(q, limit=limit, domain=domain)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except EmbeddingError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return RerankedSearchResponse(
+            query=q,
+            limit=limit,
+            results=[RerankedSearchItem(**item.__dict__) for item in results],
+        )
+
     @app.get("/documents", response_model=list[DocumentSummary])
     async def list_documents(
         request: Request,
@@ -334,8 +357,7 @@ def create_app() -> FastAPI:
         sessions = request.app.state.sessions
         async with sessions() as session:
             rows = await session.scalars(
-                select(Page).order_by(Page.last_crawled_at.desc())
-                .limit(limit).offset(offset)
+                select(Page).order_by(Page.last_crawled_at.desc()).limit(limit).offset(offset)
             )
             pages = rows.all()
         return [
