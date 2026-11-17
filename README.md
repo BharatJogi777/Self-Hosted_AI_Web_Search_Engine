@@ -73,6 +73,12 @@ See [Search Quality Evaluation](docs/16-search-quality-evaluation.md).
 
 The offline evaluator computes Precision@k, Recall@k, MRR@k, MAP@k, and NDCG@k from human relevance judgments. Start with `python scripts/evaluate_search.py`; replace the synthetic starter judgments and sample run with results from your own corpus. These sample metrics are illustrative, not a real benchmark.
 
+## Module 17 — Query understanding
+
+See [Query Understanding and Search Suggestions](docs/17-query-understanding-and-suggestions.md).
+
+The reranked search endpoint now applies conservative dictionary-based spelling correction and controlled synonym expansion. It returns the normalized, corrected, and expanded query alongside results. Use `GET /search/suggestions?q=...` for spelling suggestions. The starter vocabulary is intentionally small and should be expanded using reviewed corpus terms.
+
 ## Important crawler safeguards
 
 The crawler must identify itself, respect robots.txt and site terms, apply per-host rate limits, use bounded timeouts and response sizes, avoid private or local network addresses, and provide a way to stop or exclude crawling. Do not bypass authentication, paywalls, CAPTCHAs, or access controls.
