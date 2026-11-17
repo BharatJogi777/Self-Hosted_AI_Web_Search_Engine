@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.crawler.fetcher import SafeHTTPFetcher
 from app.crawler.url_policy import URLPolicy
 from app.database.domains import CrawlDomainRepository
-from app.database.queue import CrawlJobRepository
+from app.database.queue import CrawlJobRepository\nfrom app.services.sitemap_discovery import SitemapDiscoveryService
 from app.database.repository import PageRepository
 from app.services.ingestion import IngestionService
 from app.workers.logging_config import JsonLogFormatter
@@ -136,7 +136,7 @@ async def _worker_slot(
             logger.exception("Crawl job failed", extra={"event": "job_failed", "worker_id": worker_id,
                             "job_id": str(job.id), "attempt": job.attempts})
             if not lost_lease.is_set():
-                await jobs.fail(job.id, owner_token, f"{type(exc).__name__}: {exc}")
+                await jobs.fail(job.id, owner_token, f"{type(exc).__name__}: {exc}")\n                if job.run_id is not None:\n                    await jobs.refresh_run_status(job.run_id)
         finally:
             heartbeat_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -168,7 +168,7 @@ async def run_worker() -> None:
     pages = PageRepository(sessions)
     jobs = CrawlJobRepository(sessions)
     domain_repository = CrawlDomainRepository(sessions)
-    ingestion = IngestionService(policy, fetcher, pages)
+    ingestion = IngestionService(policy, fetcher, pages)\n    sitemap_discovery = SitemapDiscoveryService(policy, fetcher)
     worker_id = os.getenv("WORKER_ID", f"{socket.gethostname()}-{uuid.uuid4()}")
     shutdown = asyncio.Event()
     domain_locks: dict[str, asyncio.Lock] = {}
