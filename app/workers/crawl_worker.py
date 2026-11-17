@@ -25,6 +25,8 @@ from app.workers.metrics import (
     JOBS_FAILED,
     JOB_DURATION,
     LEASE_LOST,
+    PENDING_JOBS,
+    RUNNING_JOBS,
 )
 
 logger = logging.getLogger("search.crawl_worker")
@@ -40,7 +42,15 @@ async def _heartbeat(
     interval = max(1, lease_seconds // 3)
     while True:
         await asyncio.sleep(interval)
-        renewed = await jobs.renew_lease(job_id, owner_token, lease_seconds)
+        try:
+            renewed = await jobs.renew_lease(job_id, owner_token, lease_seconds)
+        except Exception:
+            logger.exception(
+                "Lease heartbeat failed",
+                extra={"event": "heartbeat_error", "job_id": str(job_id)},
+            )
+            lost_lease.set()
+            return
         if not renewed:
             lost_lease.set()
             logger.warning(
@@ -61,6 +71,12 @@ async def _worker_slot(
     domain_locks: dict[str, asyncio.Lock],
 ) -> None:
     while not shutdown.is_set():
+        try:
+            counts = await jobs.queue_counts()
+            PENDING_JOBS.set(counts["pending"])
+            RUNNING_JOBS.set(counts["running"])
+        except Exception:
+            logger.exception("Unable to refresh queue metrics", extra={"event": "metrics_error"})
         owner_token = f"{worker_id}:{slot_number}:{uuid.uuid4().hex}"
         try:
             job = await jobs.claim(owner_token, lease_seconds=lease_seconds)
