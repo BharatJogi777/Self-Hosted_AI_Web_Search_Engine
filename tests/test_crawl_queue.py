@@ -94,3 +94,36 @@ async def test_lease_renewal_requires_current_unexpired_owner():
         job_id, "worker-a:slot-0:token", lease_seconds=60
     )
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_expired_lease_owner_cannot_mark_job_failed():
+    from datetime import timedelta
+    from uuid import uuid4
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    repository = CrawlJobRepository(sessions)
+    now = datetime.now(timezone.utc)
+    job_id = uuid4()
+
+    async with sessions() as session:
+        async with session.begin():
+            session.add(CrawlJob(
+                id=job_id,
+                url="https://example.com/",
+                status="running",
+                attempts=1,
+                max_attempts=3,
+                available_at=now,
+                locked_by="worker-token",
+                locked_until=now - timedelta(seconds=1),
+            ))
+
+    assert not await repository.fail(job_id, "worker-token", "late failure")
+    loaded = await repository.get(job_id)
+    assert loaded is not None
+    assert loaded.status == "running"
+    await engine.dispose()
