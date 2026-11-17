@@ -19,6 +19,31 @@ class CrawlResponse(BaseModel):
     final_url: str
 
 
+class CrawlRunRequest(BaseModel):
+    url: HttpUrl
+    max_pages: int = Field(default=100, ge=1, le=5000)
+    max_depth: int = Field(default=2, ge=0, le=10)
+    max_attempts: int = Field(default=5, ge=1, le=10)
+
+
+class CrawlRunAccepted(BaseModel):
+    run_id: UUID
+    seed_job_id: UUID
+    status: str
+    max_pages: int
+    max_depth: int
+
+
+class CrawlRunStatus(BaseModel):
+    run_id: UUID
+    seed_url: str
+    status: str
+    max_pages: int
+    max_depth: int
+    discovered_count: int
+    job_counts: dict[str, int]
+
+
 class CrawlJobRequest(BaseModel):
     url: HttpUrl
     max_attempts: int = Field(default=5, ge=1, le=10)
