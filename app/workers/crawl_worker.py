@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.crawler.fetcher import SafeHTTPFetcher
 from app.crawler.url_policy import URLPolicy
 from app.database.queue import CrawlJobRepository
+from app.database.domains import CrawlDomainRepository
 from app.database.repository import PageRepository
 from app.services.ingestion import IngestionService
 from app.workers.logging_config import JsonLogFormatter
@@ -164,7 +165,7 @@ async def _worker_slot(
             with suppress(asyncio.CancelledError):
                 await heartbeat_task
             JOB_DURATION.observe(monotonic() - started)
-            ACTIVE_WORKERS.dec()
+            ACTIVE_WORKERS.dec()\n            await domains.release(domain, owner_token, minimum_interval_seconds=1.0)
 
 
 async def run_worker() -> None:
