@@ -2,6 +2,7 @@ import hashlib
 from dataclasses import replace
 
 import pytest
+import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
@@ -9,7 +10,7 @@ from app.database.repository import PageRepository
 from app.extraction.html_extractor import ExtractedDocument
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def repository():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
