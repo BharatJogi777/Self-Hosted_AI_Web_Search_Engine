@@ -1,0 +1,9 @@
+{
+  "results": {
+    "q1": ["doc-postgres-pooling", "doc-database-basics", "doc-postgres-connections"],
+    "q2": ["doc-python-asyncio", "doc-python-httpx"],
+    "q3": ["doc-pgvector-indexes", "doc-vector-distance", "doc-postgres-backup"],
+    "q4": ["doc-fastapi-validation", "doc-pydantic-models"],
+    "q5": ["doc-html-extraction", "doc-crawl-retries", "doc-worker-leases"]
+  }
+}
