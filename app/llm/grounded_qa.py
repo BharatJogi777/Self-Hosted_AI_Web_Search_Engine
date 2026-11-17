@@ -70,7 +70,12 @@ class GroundedQAService:
             calls = message.get("tool_calls") or []
             if not calls:
                 content = message.get("content", "")
-                if not isinstance(content, str) or not content.strip():
+                if not citations:
+                    content = (
+                        "I couldn't retrieve supporting documents from the indexed corpus, "
+                        "so I can't provide a grounded answer yet."
+                    )
+                elif not isinstance(content, str) or not content.strip():
                     content = "I could not produce an answer from the available search evidence."
                 return {
                     "question": cleaned,
@@ -105,16 +110,24 @@ class GroundedQAService:
                                 source = {
                                     "page_id": str(hit.get("page_id", "")),
                                     "url": str(hit.get("url", "")),
-                                    "title": str(hit.get("title", "")),
+                                    "title": str(hit.get("title", ""))[:300],
                                     "snippet": str(hit.get("snippet", ""))[:3000],
                                 }
-                                if source["url"] and source["url"] not in citation_ids:
-                                    citation_ids.add(source["url"])
-                                    citations.append({
+                                citation = next(
+                                    (item for item in citations if item["url"] == source["url"]),
+                                    None,
+                                )
+                                if source["url"] and citation is None:
+                                    citation = {
                                         "id": str(len(citations) + 1),
                                         "url": source["url"],
                                         "title": source["title"],
-                                    })
+                                    }
+                                    citation_ids.add(source["url"])
+                                    citations.append(citation)
+                                source["citation"] = (
+                                    f'[{citation["id"]}]' if citation is not None else None
+                                )
                                 safe_hits.append(source)
                             result = {"results": safe_hits}
                         except Exception as exc:
