@@ -132,6 +132,15 @@ class CrawlJobRepository:
                     job.available_at = now + timedelta(seconds=delay)
                 return True
 
+    async def get_active_by_url(self, url: str) -> CrawlJob | None:
+        async with self.sessions() as session:
+            return await session.scalar(
+                select(CrawlJob).where(
+                    CrawlJob.url == url,
+                    CrawlJob.status.in_(("pending", "running")),
+                ).limit(1)
+            )
+
     async def get(self, job_id: uuid.UUID) -> CrawlJob | None:
         async with self.sessions() as session:
             return await session.get(CrawlJob, job_id)
