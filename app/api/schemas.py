@@ -124,3 +124,21 @@ class SemanticSearchResponse(BaseModel):
     query: str
     limit: int
     results: list[SemanticSearchItem]
+
+
+class HybridSearchItem(BaseModel):
+    page_id: UUID
+    version_id: UUID
+    url: str
+    title: str
+    domain: str
+    snippet: str
+    fusion_score: float
+    lexical_rank: int | None
+    semantic_rank: int | None
+
+
+class HybridSearchResponse(BaseModel):
+    query: str
+    limit: int
+    results: list[HybridSearchItem]
