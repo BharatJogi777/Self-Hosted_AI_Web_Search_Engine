@@ -176,7 +176,7 @@ class SafeHTTPFetcher:
     """Fetch HTML pages with scope, DNS, redirect, size, retry and rate limits."""
 
     RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
-    ALLOWED_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "text/plain"}
+    ALLOWED_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "text/plain", "application/xml", "text/xml"}
 
     def __init__(
         self,
@@ -220,7 +220,7 @@ class SafeHTTPFetcher:
         )
         headers = {
             "User-Agent": self.user_agent,
-            "Accept": "text/html,application/xhtml+xml,text/plain;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,text/plain,application/xml,text/xml;q=0.8",
         }
 
         async with aiohttp.ClientSession(
