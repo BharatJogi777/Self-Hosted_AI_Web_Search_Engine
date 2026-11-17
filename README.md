@@ -46,6 +46,12 @@ This project is not intended to reproduce Google's global index. The initial sea
 
 Exact dependency versions will be pinned as implementation begins.
 
+## Module 13 — Semantic search
+
+See [Semantic search with Ollama and pgvector](docs/13-semantic-search-with-ollama-and-pgvector.md).
+
+The API provides `POST /documents/{document_id}/index` to embed a document's current version and `GET /search/semantic?q=...` for semantic retrieval. Configure `OLLAMA_BASE_URL`, `EMBEDDING_MODEL`, and `EMBEDDING_DIMENSIONS`. The initial schema is fixed at 768 dimensions.
+
 ## Important crawler safeguards
 
 The crawler must identify itself, respect robots.txt and site terms, apply per-host rate limits, use bounded timeouts and response sizes, avoid private or local network addresses, and provide a way to stop or exclude crawling. Do not bypass authentication, paywalls, CAPTCHAs, or access controls.
