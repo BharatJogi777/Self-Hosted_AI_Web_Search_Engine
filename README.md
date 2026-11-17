@@ -52,6 +52,12 @@ See [Semantic search with Ollama and pgvector](docs/13-semantic-search-with-olla
 
 The API provides `POST /documents/{document_id}/index` to embed a document's current version and `GET /search/semantic?q=...` for semantic retrieval. Configure `OLLAMA_BASE_URL`, `EMBEDDING_MODEL`, and `EMBEDDING_DIMENSIONS`. The initial schema is fixed at 768 dimensions.
 
+## Module 14 — Hybrid search
+
+See [Hybrid Search and Reciprocal Rank Fusion](docs/14-hybrid-search-and-reciprocal-rank-fusion.md).
+
+The `GET /search/hybrid` endpoint fuses lexical and semantic candidate rankings using RRF. Configure `HYBRID_RRF_K` (default 60) and `HYBRID_CANDIDATE_LIMIT` (default 50).
+
 ## Important crawler safeguards
 
 The crawler must identify itself, respect robots.txt and site terms, apply per-host rate limits, use bounded timeouts and response sizes, avoid private or local network addresses, and provide a way to stop or exclude crawling. Do not bypass authentication, paywalls, CAPTCHAs, or access controls.
