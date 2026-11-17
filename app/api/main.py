@@ -21,6 +21,9 @@ from app.api.schemas import (
     HealthResponse,
     SearchItem,
     SearchResponse,
+    SemanticIndexResponse,
+    SemanticSearchItem,
+    SemanticSearchResponse,
 )
 from app.crawler.fetcher import FetchError, SafeHTTPFetcher
 from app.crawler.url_policy import URLPolicy, URLRejected
@@ -28,6 +31,8 @@ from app.database.models import Page
 from app.database.queue import CrawlJobRepository
 from app.database.repository import PageRepository
 from app.search.postgres_search import PostgresSearchRepository
+from app.search.ollama_embeddings import EmbeddingError, OllamaEmbeddingClient
+from app.search.semantic_search import SemanticSearchRepository
 from app.services.ingestion import IngestionService, RobotsDeniedError
 
 
@@ -55,6 +60,20 @@ def create_app() -> FastAPI:
         app.state.crawl_job_repository = CrawlJobRepository(sessions)
         app.state.url_policy = policy
         app.state.search_repository = PostgresSearchRepository(sessions)
+        embedding_client = OllamaEmbeddingClient(
+            base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
+            model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
+            dimensions=int(os.getenv("EMBEDDING_DIMENSIONS", "768")),
+            timeout_seconds=float(os.getenv("EMBEDDING_TIMEOUT_SECONDS", "60")),
+        )
+        app.state.embedding_client = embedding_client
+        app.state.semantic_search_repository = SemanticSearchRepository(
+            sessions,
+            embedding_client,
+            max_chunk_chars=int(os.getenv("CHUNK_MAX_CHARS", "1200")),
+            chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "150")),
+            batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "16")),
+        )
         app.state.ingestion_service = (
             IngestionService(policy, fetcher, app.state.page_repository)
             if policy and fetcher else None
@@ -62,6 +81,7 @@ def create_app() -> FastAPI:
         try:
             yield
         finally:
+            await embedding_client.close()
             await engine.dispose()
 
     app = FastAPI(
@@ -229,6 +249,49 @@ def create_app() -> FastAPI:
             limit=limit,
             offset=offset,
             results=[SearchItem(**item.__dict__) for item in results],
+        )
+
+
+
+    @app.post("/documents/{document_id}/index", response_model=SemanticIndexResponse)
+    async def index_document(request: Request, document_id: str):
+        from uuid import UUID
+        try:
+            parsed_id = UUID(document_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid document ID") from exc
+        repository = request.app.state.semantic_search_repository
+        try:
+            result = await repository.index_document(parsed_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except EmbeddingError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return SemanticIndexResponse(
+            page_id=result.page_id,
+            version_id=result.version_id,
+            chunk_count=result.chunk_count,
+            embedding_model=result.embedding_model,
+        )
+
+    @app.get("/search/semantic", response_model=SemanticSearchResponse)
+    async def semantic_search(
+        request: Request,
+        q: str = Query(min_length=1, max_length=1000),
+        limit: int = Query(default=10, ge=1, le=100),
+        domain: str | None = Query(default=None, max_length=255),
+    ):
+        repository = request.app.state.semantic_search_repository
+        try:
+            results = await repository.search(q, limit=limit, domain=domain)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except EmbeddingError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return SemanticSearchResponse(
+            query=q,
+            limit=limit,
+            results=[SemanticSearchItem(**item.__dict__) for item in results],
         )
 
     @app.get("/documents", response_model=list[DocumentSummary])
